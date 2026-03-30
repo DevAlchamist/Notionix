@@ -1,0 +1,36 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #1E293B;
+  /* Notionix Color Palette */
+  --color-primary: #283593;
+  --color-secondary: #546E7A;
+  --color-tertiary: #6B7791;
+  --color-neutral: #F8F9FA;
+  
+  --font-geist-sans: "Inter", system-ui, sans-serif;
+  --font-geist-mono: "Fira Code", monospace;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  
+  /* Custom Theme Colors */
+  --color-notionix-primary: var(--color-primary);
+  --color-notionix-secondary: var(--color-secondary);
+  --color-notionix-tertiary: var(--color-tertiary);
+  --color-notionix-neutral: var(--color-neutral);
+  
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
