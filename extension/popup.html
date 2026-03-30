@@ -1,0 +1,552 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>AI Remember</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      :root {
+        --bg-in: #fdfdfd;
+        --accent: #4b5cc4;
+        --text-main: #0f172a;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 0;
+        width: 320px;
+        color: var(--text-main);
+      }
+
+      body[data-auth="in"] { background: var(--bg-in); }
+      body[data-auth="out"] { background: #f8fafc; }
+
+      /* LOGGED OUT VIEW */
+      #logged-out-view {
+        display: none;
+        flex-direction: column;
+        align-items: center;
+        padding: 24px 20px;
+        min-height: 480px;
+      }
+      body[data-auth="out"] #logged-out-view { display: flex; }
+
+      .logo-container { display: flex; flex-direction: column; align-items: center; margin-top: 10px; margin-bottom: 24px; }
+      .logo { width: 44px; height: 44px; background: var(--accent); border-radius: 12px; display: flex; align-items: center; justify-content: center; color: white; margin-bottom: 12px; box-shadow: 0 4px 12px rgba(75, 92, 196, 0.2); }
+      .brand-title { font-size: 20px; font-weight: 800; color: #1e293b; margin-bottom: 4px; }
+      .brand-subtitle { font-size: 10px; font-weight: 600; color: #64748b; letter-spacing: 0.1em; }
+
+      .login-card { background: white; border-radius: 12px; padding: 24px 20px; width: 100%; box-shadow: 0 2px 10px rgba(0,0,0,0.02), 0 0 1px rgba(0,0,0,0.06); margin-bottom: 20px; }
+      .welcome-title { font-size: 16px; font-weight: 700; color: #1e293b; margin: 0 0 4px 0; }
+      .welcome-subtitle { font-size: 12px; color: #64748b; margin: 0 0 20px 0; }
+
+      .google-btn { width: 100%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 12px; font-weight: 600; color: #334155; cursor: pointer; transition: background 0.2s; }
+      .google-btn:hover { background: #f1f5f9; }
+      .google-btn:disabled { opacity: 0.65; cursor: not-allowed; }
+
+      .login-status { font-size: 11px; color: #64748b; text-align: center; margin: 14px 0 0; min-height: 1.25em; line-height: 1.4; font-weight: 500; }
+
+      /* LOGGED IN VIEW */
+      #signed-in {
+        display: none;
+        flex-direction: column;
+        padding: 16px;
+        min-height: 480px;
+        position: relative;
+        overflow: hidden;
+      }
+      body[data-auth="in"] #signed-in { display: flex; }
+
+      /* HEADER */
+      .top-nav {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #f1f5f9;
+        margin-left: -16px;
+        margin-right: -16px;
+        padding-left: 16px;
+        padding-right: 16px;
+      }
+      .brand-row { display: flex; align-items: center; gap: 6px; }
+      .brand-text { font-size: 15px; font-weight: 800; color: #0f172a; }
+      .ext-badge { background: #e0e7ff; color: var(--accent); font-size: 9px; font-weight: 800; padding: 3px 6px; border-radius: 6px; letter-spacing: 0.05em; }
+      .nav-actions { display: flex; align-items: center; gap: 14px; }
+      
+      .bell-icon { color: #475569; display: flex; cursor: pointer; }
+      
+      .avatar-wrap { position: relative; display: flex; align-items: center; }
+      .avatar { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 2px solid #e2e8f0; background: #e2e8f0; }
+
+      button#logout-btn { 
+        background: transparent; 
+        border: none; 
+        color: #94a3b8; 
+        cursor: pointer; 
+        padding: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: color 0.2s;
+      }
+      button#logout-btn:hover { color: #ef4444; }
+
+      /* SEARCH BOX */
+      .search-box {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 10px 12px;
+        margin-bottom: 16px;
+      }
+      .search-box svg { color: #64748b; }
+      .search-box input {
+        border: none; background: transparent; font-size: 13px; color: #1e293b; width: 100%; outline: none; font-family: inherit;
+      }
+      .search-box input::placeholder { color: #94a3b8; }
+
+      /* ACTION BUTTONS */
+      .action-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-bottom: 24px; }
+      .action-btn { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 12px; padding: 16px 0; border-radius: 12px; font-size: 14px; font-weight: 700; border: none; cursor: pointer; transition: transform 0.1s, box-shadow 0.2s; font-family: inherit; }
+      .action-btn:active { transform: scale(0.98); }
+      
+      .btn-new-note { background: #4b5cc4; color: white; box-shadow: 0 4px 12px rgba(75, 92, 196, 0.25); }
+      .btn-new-note:disabled { opacity: 0.6; cursor: not-allowed; }
+      .btn-new-note-icon { background: white; color: #4b5cc4; border-radius: 50%; width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; line-height: 1; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+
+      /* RECENT MEMORIES */
+      .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+      .section-title { font-size: 14px; font-weight: 700; color: #1e293b; margin: 0; }
+      .section-link { font-size: 11px; font-weight: 700; color: var(--accent); text-decoration: none; }
+
+      .summary-shell { flex: 1; overflow-y: auto; margin: -4px -16px 0; padding: 4px 16px 20px; }
+      .summary-shell::-webkit-scrollbar { width: 4px; }
+      .summary-shell::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+      
+      .summary-list { margin: 0; padding: 0; list-style: none; }
+      
+      .summary-item { background: white; border-radius: 12px; padding: 16px; margin-bottom: 12px; border: 1px solid #f1f5f9; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.01), 0 2px 4px -2px rgba(0,0,0,0.02); display: flex; flex-direction: column; }
+      .summary-meta { order: -1; display: flex; flex-direction: row-reverse; justify-content: space-between; align-items: center; font-size: 10px; color: #64748b; font-weight: 600; margin-bottom: 10px; }
+      .badge { background: #e0e7ff; color: var(--accent); padding: 4px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; }
+      .summary-title { font-size: 13px; font-weight: 700; color: #0f172a; line-height: 1.4; }
+
+      /* HOVER DASHBOARD BUTTON (FAB) */
+      .fab-dashboard {
+        position: fixed;
+        bottom: 24px;
+        right: 24px;
+        width: 46px;
+        height: 46px;
+        background: var(--text-main);
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s, background 0.2s;
+        z-index: 100;
+        text-decoration: none;
+      }
+      .fab-dashboard:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
+        background: #000;
+      }
+      .fab-dashboard:active { transform: translateY(1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15); }
+
+      #status-text { font-size: 11px; color: #64748b; text-align: center; margin-top: 10px; font-weight: 500; }
+
+      /* QUICK CAPTURE VIEW */
+      #quick-capture-view {
+        display: none;
+        flex-direction: column;
+        padding: 24px 20px;
+        min-height: 480px;
+      }
+      body[data-capture="active"] #signed-in,
+      body[data-capture="active"] #logged-out-view { display: none !important; }
+      body[data-capture="active"] #quick-capture-view { display: flex; }
+
+      .qc-title { font-size: 18px; font-weight: 800; color: #0f172a; margin: 0 0 4px 0; }
+      .qc-subtitle { font-size: 11px; color: #64748b; margin: 0 0 20px 0; font-weight: 500; }
+
+      .qc-label { font-size: 9px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+      
+      .qc-summary-box { 
+        background: #f8fafc; 
+        border: 1px solid #e2e8f0; 
+        border-radius: 8px; 
+        padding: 12px; 
+        font-size: 12px; 
+        color: #334155; 
+        line-height: 1.5; 
+        margin-bottom: 16px; 
+        display: -webkit-box;
+        -webkit-line-clamp: 5;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      .qc-input-wrap {
+        display: flex;
+        align-items: center;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 8px 12px;
+        margin-bottom: 16px;
+        gap: 8px;
+      }
+      .qc-input-wrap.qc-tags-wrap { position: relative; }
+      .qc-input-wrap svg { color: #64748b; flex-shrink: 0; }
+      .qc-input-wrap input {
+        border: none;
+        background: transparent;
+        font-size: 12px;
+        color: #1e293b;
+        width: 100%;
+        outline: none;
+        font-weight: 500;
+        font-family: inherit;
+      }
+
+      .qc-tags-suggest {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.12);
+        max-height: 156px;
+        overflow: auto;
+        padding: 6px;
+        z-index: 200;
+      }
+      .qc-tags-suggest[hidden] { display: none; }
+      .qc-tags-suggest-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        width: 100%;
+        text-align: left;
+        border: 0;
+        background: transparent;
+        border-radius: 8px;
+        padding: 8px 10px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .qc-tags-suggest-item:hover,
+      .qc-tags-suggest-item[data-active="true"] {
+        background: #f1f5f9;
+      }
+      .qc-tags-suggest-name {
+        font-size: 12px;
+        font-weight: 650;
+        color: #0f172a;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .qc-tags-suggest-meta {
+        font-size: 10px;
+        font-weight: 750;
+        color: #64748b;
+        flex-shrink: 0;
+      }
+
+      .qc-workspace-inner {
+        position: relative;
+        flex: 1;
+        min-width: 0;
+      }
+      .qc-workspace-trigger {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 6px;
+        border: none;
+        background: transparent;
+        font-size: 12px;
+        font-weight: 500;
+        color: #1e293b;
+        cursor: pointer;
+        padding: 0;
+        font-family: inherit;
+        text-align: left;
+      }
+      #qc-workspace-label {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .qc-workspace-list {
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: calc(100% + 6px);
+        z-index: 400;
+        max-height: 220px;
+        overflow-y: auto;
+        margin: 0;
+        padding: 6px;
+        list-style: none;
+        background: #fff;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
+      }
+      .qc-workspace-list::-webkit-scrollbar { width: 5px; }
+      .qc-workspace-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+      .qc-workspace-option {
+        padding: 10px 12px;
+        border-radius: 8px;
+        font-size: 12px;
+        font-weight: 500;
+        color: #334155;
+        cursor: pointer;
+      }
+      .qc-workspace-option:hover {
+        background: #f1f5f9;
+      }
+      .qc-workspace-chevron { flex-shrink: 0; color: #64748b; }
+
+      .qc-save-btn {
+        background: #4b5cc4;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 12px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: background 0.2s;
+        margin-top: 4px;
+      }
+      .qc-save-btn:hover { background: #3f4dac; }
+      .qc-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+      .qc-discard-btn {
+        background: transparent;
+        border: none;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin: 12px auto 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        cursor: pointer;
+        transition: color 0.2s;
+      }
+      .qc-discard-btn:hover { color: #ef4444; }
+
+      .qc-source-card {
+        margin-top: auto;
+        background: #f1f5f9;
+        border-radius: 8px;
+        padding: 12px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+      .qc-source-icon {
+        width: 32px;
+        height: 32px;
+        background: white;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+      }
+      .qc-source-info { flex: 1; min-width: 0; }
+      .qc-source-title { font-size: 11px; font-weight: 700; color: #1e293b; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+      .qc-source-url { font-size: 9px; color: #94a3b8; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    </style>
+  </head>
+  <body data-auth="out">
+    
+    <!-- BRAND NEW LOGGED OUT UI -->
+    <div id="logged-out-view">
+      <div class="logo-container">
+        <div class="logo">
+          <!-- Brain / AI Icon inside a blue rounded square -->
+          <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/>
+            <path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/>
+            <path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4 4.5 4.5 0 0 1 3 4 4.5 4.5 0 0 1 3-4Z"/>
+            <path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/>
+            <path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/>
+            <path d="M3.477 10.896a4 4 0 0 1 .585-.396"/>
+            <path d="M19.938 10.5a4 4 0 0 1 .585.396"/>
+            <path d="M6 18a4 4 0 0 1-1.967-.516"/>
+            <path d="M19.967 17.484A4 4 0 0 1 18 18"/>
+          </svg>
+        </div>
+        <div class="brand-title">Notionix</div>
+        <div class="brand-subtitle">MEMORY LAYER</div>
+      </div>
+
+      <div class="login-card">
+        <h2 class="welcome-title">Welcome back</h2>
+        <p class="welcome-subtitle">Sign in to sync your workspace</p>
+
+        <!-- Google button triggers OAuth -->
+        <button type="button" id="login-btn" class="google-btn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/><path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/><path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/><path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/></svg>
+          Sign in with Google
+        </button>
+        <p id="login-status" class="login-status" aria-live="polite"></p>
+      </div>
+      <div id="signed-out" style="display: none;"></div> 
+    </div>
+
+    <!-- LOGGED IN UI (DASHBOARD) -->
+    <div id="signed-in">
+      
+      <!-- Safe fallback inputs for JS bindings (invisible) -->
+      <div id="user-name" style="display:none;"></div>
+      <div id="user-email" style="display:none;"></div>
+
+      <div class="top-nav">
+        <div class="brand-row">
+          <span class="brand-text">Notionix</span>
+          <span class="ext-badge">EXT</span>
+        </div>
+        <div class="nav-actions">
+          <svg class="bell-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          
+          <button id="logout-btn" title="Sign Out">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+          </button>
+
+          <div class="avatar-wrap">
+            <img id="user-avatar" class="avatar" alt="Avatar" />
+          </div>
+        </div>
+      </div>
+
+      <div class="search-box">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="text" id="memories-search-input" placeholder="Search your summaries..." />
+      </div>
+
+      <div class="action-grid">
+        <button id="summarize-btn" class="action-btn btn-new-note">
+          <div class="btn-new-note-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+          </div>
+          Capture
+        </button>
+      </div>
+
+      <div class="section-header">
+        <h3 class="section-title">Recent Memories</h3>
+        <a href="http://localhost:3000/dashboard" target="_blank" class="section-link">View All</a>
+      </div>
+
+      <div class="summary-shell">
+        <div id="recent-summaries" class="summary-list"></div>
+        <div id="status-text"></div>
+      </div>
+
+      <!-- BOTTOM RIGHT HOVER BUTTON (DASHBOARD REDIRECT) -->
+      <a href="http://localhost:3000/dashboard" target="_blank" class="fab-dashboard" title="Open Dashboard">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+      </a>
+
+    </div>
+
+    <!-- QUICK CAPTURE VIEW -->
+    <div id="quick-capture-view">
+      <div class="top-nav" style="border-bottom: none; margin-bottom: 4px;">
+        <div class="brand-row">
+          <div class="logo" style="width: 28px; height: 28px; border-radius: 6px; box-shadow: none; margin-bottom: 0;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z"/><path d="M15 13a4.5 4.5 0 0 1-3-4 4.5 4.5 0 0 1-3 4 4.5 4.5 0 0 1 3 4 4.5 4.5 0 0 1 3-4Z"/><path d="M17.599 6.5a3 3 0 0 0 .399-1.375"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M19.938 10.5a4 4 0 0 1 .585.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M19.967 17.484A4 4 0 0 1 18 18"/></svg>
+          </div>
+          <div>
+            <div style="font-size: 13px; font-weight: 800; color: #1e293b; line-height: 1;">Notionix</div>
+            <div style="font-size: 8px; font-weight: 700; color: #64748b; letter-spacing: 0.05em; text-transform: uppercase; margin-top: 1px;">Extension</div>
+          </div>
+        </div>
+      </div>
+
+      <h2 class="qc-title">Quick Capture</h2>
+      <p class="qc-subtitle">Auto-summarizing current tab content...</p>
+
+      <div class="qc-label">TITLE</div>
+      <div class="qc-summary-box" id="qc-generated-title" style="-webkit-line-clamp: 2; font-weight: 800; color: #0f172a;">...</div>
+
+      <div class="qc-label">SUMMARY</div>
+      <div class="qc-summary-box" id="qc-summary-text">...</div>
+
+      <div class="qc-label">TAGS</div>
+      <div class="qc-input-wrap qc-tags-wrap">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+        <input type="text" id="qc-tags-input" placeholder="e.g. Cognitive Research, UI Trends..." />
+        <div id="qc-tags-suggest" class="qc-tags-suggest" role="listbox" hidden></div>
+      </div>
+
+      <div class="qc-label">PROJECT</div>
+      <div class="qc-input-wrap qc-workspace-row">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
+        <div class="qc-workspace-inner">
+          <button type="button" class="qc-workspace-trigger" id="qc-workspace-trigger" aria-haspopup="listbox" aria-expanded="false">
+            <span id="qc-workspace-label">Personal workspace</span>
+            <svg class="qc-workspace-chevron" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 15 5 5 5-5"/><path d="m7 9 5-5 5 5"/></svg>
+          </button>
+          <ul class="qc-workspace-list" id="qc-workspace-list" role="listbox" hidden></ul>
+        </div>
+      </div>
+
+      <button class="qc-save-btn" id="qc-save-btn">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+        Save to Memory
+      </button>
+
+      <button class="qc-discard-btn" id="qc-discard-btn">
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        DISCARD
+      </button>
+
+      <div class="qc-source-card" id="qc-source-card">
+        <div class="qc-source-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f172a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></div>
+        <div class="qc-source-info">
+          <div class="qc-source-title" id="qc-source-title">Designing for Memory.pdf</div>
+          <div class="qc-source-url" id="qc-source-url">RESEARCHGATE.NET</div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="dist/popup.js"></script>
+  </body>
+</html>

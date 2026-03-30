@@ -1,0 +1,1 @@
+{"version":3,"file":"summaryderive.d.ts","sourceRoot":"","sources":["../src/summaryderive.ts"],"names":[],"mappings":"AAmBA,wBAAgB,kBAAkB,CAAC,WAAW,EAAE,MAAM,EAAE,MAAM,SAAM,GAAG,MAAM,CA8B5E;AAkED,wBAAgB,mBAAmB,CAAC,WAAW,EAAE,MAAM,GAAG,MAAM,CAG/D;AAED,wBAAgB,sBAAsB,CAAC,WAAW,EAAE,MAAM,GAAG;IAAE,KAAK,EAAE,MAAM,GAAG,IAAI,CAAC;IAAC,WAAW,EAAE,MAAM,CAAA;CAAE,CAqBzG"}

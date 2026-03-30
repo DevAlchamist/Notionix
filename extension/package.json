@@ -1,0 +1,23 @@
+{
+  "name": "extension",
+  "version": "0.1.0",
+  "description": "Chrome extension for AI conversation summarization.",
+  "main": "dist/background.js",
+  "scripts": {
+    "build": "npm run typecheck && npm run build:emit && npm run build:content",
+    "typecheck": "tsc --noEmit",
+    "build:emit": "tsc -p tsconfig.emit.json",
+    "build:content": "node ./esbuild.content.mjs",
+    "watch": "npm run typecheck -- --watch",
+    "test": "echo \"No tests yet\" && exit 0"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "@types/chrome": "^0.1.37",
+    "esbuild": "^0.25.9",
+    "typescript": "^5.9.3"
+  }
+}

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Sign in — Notionix</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 24px 20px;
+        min-width: 320px;
+        color: #0f172a;
+        background: #f8fafc;
+      }
+      h1 {
+        font-size: 15px;
+        font-weight: 700;
+        margin: 0 0 8px;
+      }
+      #status {
+        font-size: 13px;
+        line-height: 1.45;
+        color: #475569;
+        margin: 0;
+        min-height: 3.5em;
+      }
+      #status.error {
+        color: #b91c1c;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Google sign-in</h1>
+    <p id="status">Starting…</p>
+    <script type="module" src="dist/auth-window.js"></script>
+  </body>
+</html>

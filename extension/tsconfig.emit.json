@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/background.ts", "src/popup.ts", "src/auth-window.ts", "src/googleAuth.ts", "src/summaryderive.ts"],
+  "exclude": ["src/content-*.ts"]
+}
+
