@@ -5,8 +5,8 @@ export default function Home() {
       <div className="h-1 w-full bg-notionix-primary/20"></div>
 
       {/* Navigation */}
-      <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-10">
+      <header className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+        <div className="flex items-center gap-6 sm:gap-10">
           <span className="text-xl font-bold tracking-tight text-slate-900">
             Notionix
           </span>
@@ -22,12 +22,12 @@ export default function Home() {
             </a>
           </nav>
         </div>
-        <div className="flex items-center gap-4">
-          <a href="http://localhost:4000/api/auth/google" className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <a href="/api/auth/google" className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
             Login
           </a>
           <a
-            href="http://localhost:4000/api/auth/google"
+            href="/api/auth/google"
             className="rounded-lg bg-notionix-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-90 active:scale-95"
           >
             Get Started
@@ -36,7 +36,7 @@ export default function Home() {
       </header>
 
       {/* Hero Section */}
-      <main className="mx-auto max-w-7xl px-6 pb-24 pt-16 md:pt-24 lg:pt-32">
+      <main className="mx-auto max-w-7xl px-4 pb-20 pt-12 sm:px-6 md:pt-20 lg:pt-28">
         <div className="relative">
           <div className="pointer-events-none absolute -left-24 -top-24 h-[360px] w-[360px] rounded-full bg-notionix-primary/10 blur-3xl" />
           <div className="pointer-events-none absolute -right-24 top-24 h-[420px] w-[420px] rounded-full bg-indigo-400/10 blur-3xl" />
@@ -47,7 +47,7 @@ export default function Home() {
                 Introducing Memory Layer 2.0
               </div>
 
-              <h1 className="text-5xl leading-[1.06] font-extrabold tracking-tight text-[#1a1f2e] sm:text-6xl lg:text-[64px]">
+              <h1 className="text-4xl font-extrabold leading-[1.08] tracking-tight text-[#1a1f2e] sm:text-5xl lg:text-[64px]">
                 The architecture for your{" "}
                 <span className="bg-linear-to-r from-[#4B5CC4] to-[#7C3AED] bg-clip-text text-transparent">
                   collective
@@ -62,7 +62,7 @@ export default function Home() {
 
               <div className="mt-10 flex flex-wrap gap-4">
                 <a
-                  href="http://localhost:4000/api/auth/google"
+                  href="/api/auth/google"
                   className="inline-flex h-12 items-center justify-center gap-2 rounded-lg bg-notionix-primary px-6 text-[15px] font-semibold text-white shadow-sm transition-all hover:bg-opacity-90 active:scale-95"
                 >
                   Build Your Workspace
@@ -160,7 +160,7 @@ export default function Home() {
       </main>
 
       {/* Features Section */}
-      <section className="mx-auto max-w-7xl px-6 py-24">
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24">
         <div className="mb-16">
           <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
             Master your information flow
@@ -252,7 +252,7 @@ export default function Home() {
       </section>
 
       {/* Cycle Section */}
-      <section className="mx-auto max-w-7xl px-6 py-24 sm:py-32">
+      <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24 md:py-32">
          <div className="text-center mb-24 flex flex-col items-center">
            <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl mb-6">
               The Cycle of Intelligence
@@ -287,7 +287,7 @@ export default function Home() {
 
       {/* Testimonial Section */}
       <section className="bg-[#FAFAFA] border-t border-slate-100">
-         <div className="mx-auto max-w-7xl px-6 py-24">
+         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
                <div className="max-w-xl">
                   <h2 className="text-[32px] sm:text-[40px] font-bold tracking-tight text-[#1a1f2e] leading-[1.1] mb-12">
@@ -336,7 +336,7 @@ export default function Home() {
       </section>
 
       {/* CTA Section */}
-      <section className="mx-auto max-w-7xl px-6 py-12 md:py-24">
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 md:py-24">
          <div className="rounded-[32px] bg-[#111827] px-6 py-24 text-center flex flex-col items-center shadow-xl">
             <h2 className="text-2xl md:text-[28px] font-bold tracking-tight text-white mb-4">
                Ready to architect your intelligence?
@@ -345,7 +345,7 @@ export default function Home() {
                Join over 2,500 companies building their memory layer on Notionix.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-               <a href="http://localhost:4000/api/auth/google" className="inline-flex h-12 items-center justify-center rounded-lg bg-notionix-primary px-8 text-[15px] font-semibold text-white transition hover:bg-notionix-primary/90">
+               <a href="/api/auth/google" className="inline-flex h-12 items-center justify-center rounded-lg bg-notionix-primary px-8 text-[15px] font-semibold text-white transition hover:bg-notionix-primary/90">
                   Start Free Trial
                </a>
                <a href="#" className="inline-flex h-12 items-center justify-center rounded-lg border border-slate-800 bg-transparent px-8 text-[15px] font-semibold text-white transition hover:bg-slate-800">
@@ -357,7 +357,7 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="border-t border-slate-100 bg-[#FAFAFA] pt-20 pb-10">
-         <div className="mx-auto max-w-7xl px-6">
+         <div className="mx-auto max-w-7xl px-4 sm:px-6">
             <div className="grid grid-cols-2 md:grid-cols-6 gap-10 lg:gap-8 mb-20">
                <div className="col-span-2">
                   <span className="text-xl font-bold tracking-tight text-slate-900 block mb-6">

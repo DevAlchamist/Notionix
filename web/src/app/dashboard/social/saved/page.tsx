@@ -7,7 +7,7 @@ export default async function SocialSavedPage() {
 
   return (
     <main className="min-h-0 w-full flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-[1280px] px-6 py-10 pb-24 md:px-10 lg:px-12">
+      <div className="mx-auto max-w-[1280px] px-4 py-8 pb-24 sm:px-6 md:px-10 lg:px-12">
         <Link
           href="/dashboard/social"
           className="mb-6 inline-flex text-[13px] font-bold text-[#4B5CC4] hover:underline"
@@ -15,7 +15,7 @@ export default async function SocialSavedPage() {
           ← Social feed
         </Link>
         <header className="mb-10">
-          <h1 className="text-[32px] font-extrabold tracking-tight text-slate-900">Saved summaries</h1>
+          <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900 sm:text-[32px]">Saved summaries</h1>
           <p className="mt-2 max-w-xl text-[16px] font-medium text-[#5e6b7c]">
             Bookmarks from the public feed. Only summaries that are still public are shown here.
           </p>

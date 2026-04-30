@@ -34,3 +34,61 @@ body {
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
+
+:root {
+  --motion-duration-fast: 180ms;
+  --motion-duration-base: 280ms;
+  --motion-ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes app-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+body.app-animate {
+  animation: app-enter var(--motion-duration-base) var(--motion-ease-standard) both;
+}
+
+a,
+button,
+[role="button"],
+input,
+textarea,
+select {
+  transition:
+    color var(--motion-duration-fast) var(--motion-ease-standard),
+    background-color var(--motion-duration-fast) var(--motion-ease-standard),
+    border-color var(--motion-duration-fast) var(--motion-ease-standard),
+    opacity var(--motion-duration-fast) var(--motion-ease-standard),
+    transform var(--motion-duration-fast) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-fast) var(--motion-ease-standard);
+}
+
+button:hover,
+[role="button"]:hover {
+  transform: translateY(-1px);
+}
+
+button:active,
+[role="button"]:active {
+  transform: translateY(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -21,10 +21,10 @@ export default async function SocialFeedPage() {
 
   return (
     <main className="min-h-0 w-full flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-[1280px] px-6 py-10 pb-24 md:px-10 lg:px-12">
+      <div className="mx-auto max-w-[1280px] px-4 py-8 pb-24 sm:px-6 md:px-10 lg:px-12">
         <header className="mb-10 flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-[32px] font-extrabold tracking-tight text-slate-900">Social Feed</h1>
+            <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900 sm:text-[32px]">Social Feed</h1>
             <p className="mt-2 max-w-xl text-[16px] font-medium text-[#5e6b7c]">
               Public summaries from everyone on Notionix—like, comment, and save what resonates.
             </p>
@@ -67,7 +67,7 @@ export default async function SocialFeedPage() {
             )}
           </div>
 
-          <aside className="w-full shrink-0 space-y-6 lg:w-[320px]">
+          <aside className="w-full shrink-0 space-y-6 lg:w-[300px]">
             <div className="relative overflow-hidden rounded-xl bg-[#1a237e] px-6 py-7 text-white shadow-md">
               <div
                 className="pointer-events-none absolute -right-6 -top-6 h-32 w-32 rounded-full bg-white/10"

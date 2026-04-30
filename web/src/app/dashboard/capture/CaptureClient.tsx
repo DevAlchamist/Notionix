@@ -4,9 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { WorkspaceSelect, type WorkspaceOption } from "@/components/WorkspaceSelect";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+import { clientApiUrl } from "@/lib/apiBase";
 
 const DEFAULT_TAGS = ["Product Strategy", "AI Insights"];
 
@@ -52,7 +50,7 @@ async function ensureTagIds(names: string[]): Promise<string[]> {
     const name = raw.trim();
     if (!name) continue;
     try {
-      const createRes = await fetch(`${API_BASE_URL}/api/tags`, {
+      const createRes = await fetch(clientApiUrl("/api/tags"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -63,7 +61,7 @@ async function ensureTagIds(names: string[]): Promise<string[]> {
         if (d?.id) ids.push(d.id);
         continue;
       }
-      const listRes = await fetch(`${API_BASE_URL}/api/tags`, { credentials: "include" });
+      const listRes = await fetch(clientApiUrl("/api/tags"), { credentials: "include" });
       if (listRes.ok) {
         const data = await listRes.json();
         const existing = (data.items ?? []).find((t: { name: string }) => t.name === name);
@@ -136,7 +134,7 @@ export function CaptureClient() {
       setEditLoadError(null);
       try {
         const res = await fetch(
-          `${API_BASE_URL}/api/summaries/${encodeURIComponent(editId)}`,
+          clientApiUrl(`/api/summaries/${encodeURIComponent(editId)}`),
           { credentials: "include" },
         );
         if (!res.ok) {
@@ -170,7 +168,7 @@ export function CaptureClient() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${API_BASE_URL}/api/workspaces`, { credentials: "include" });
+        const res = await fetch(clientApiUrl("/api/workspaces"), { credentials: "include" });
         if (!res.ok) throw new Error("Workspaces unavailable");
         const data = await res.json();
         const items = (data.items ?? []).map((w: { id: string; name: string }) => ({
@@ -211,7 +209,7 @@ export function CaptureClient() {
       tagSuggestAbort.current = controller;
       setTagsSuggestError(null);
       fetch(
-        `${API_BASE_URL}/api/tags/suggest?query=${encodeURIComponent(q)}&limit=12`,
+        `${clientApiUrl("/api/tags/suggest")}?query=${encodeURIComponent(q)}&limit=12`,
         {
           credentials: "include",
           signal: controller.signal,
@@ -308,7 +306,7 @@ export function CaptureClient() {
     try {
       const tagIds = await ensureTagIds(tags);
       if (editId) {
-        const res = await fetch(`${API_BASE_URL}/api/summaries/${encodeURIComponent(editId)}`, {
+        const res = await fetch(clientApiUrl(`/api/summaries/${encodeURIComponent(editId)}`), {
           method: "PUT",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -336,7 +334,7 @@ export function CaptureClient() {
         return;
       }
 
-      const res = await fetch(`${API_BASE_URL}/api/summaries`, {
+      const res = await fetch(clientApiUrl("/api/summaries"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -376,7 +374,7 @@ export function CaptureClient() {
 
   if (editId && editLoadError) {
     return (
-      <div className="mx-auto max-w-[1200px] px-6 py-16 md:px-10">
+      <div className="mx-auto max-w-[1200px] px-4 py-12 sm:px-6 md:px-10 md:py-16">
         <p className="text-[15px] font-medium text-red-800">{editLoadError}</p>
         <Link
           href="/dashboard"
@@ -397,10 +395,10 @@ export function CaptureClient() {
   }
 
   return (
-    <div className="mx-auto max-w-[1200px] px-6 py-8 pb-24 md:px-10 lg:px-12">
+    <div className="mx-auto max-w-[1200px] px-4 py-6 pb-24 sm:px-6 md:px-10 lg:px-12 md:py-8">
       <header className="mb-10 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900 md:text-[32px]">
+          <h1 className="text-[24px] font-extrabold tracking-tight text-slate-900 sm:text-[28px] md:text-[32px]">
             {editId ? "Edit Intelligence Capture" : "New Intelligence Capture"}
           </h1>
           <p className="mt-2 max-w-xl text-[15px] font-medium leading-relaxed text-[#5e6b7c]">
@@ -428,7 +426,7 @@ export function CaptureClient() {
         </div>
       </header>
 
-      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_340px] lg:gap-10">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-[1fr_320px] lg:gap-10">
         <div className="space-y-6">
           <form id="capture-form" onSubmit={handleSubmit} className="space-y-6">
             <section className="rounded-[16px] border border-slate-200/90 bg-white p-6 shadow-sm md:p-8">

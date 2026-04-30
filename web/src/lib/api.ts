@@ -1,11 +1,12 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+import { serverApiUrl } from "@/lib/apiBase";
 
 export type SummaryListItem = {
   id: string;
   title: string;
   platform: string;
   createdAt: string;
+  preview?: string;
+  tags?: Array<{ _id?: string; name?: string; color?: string }>;
   starred?: boolean;
   workspaceId?: string | null;
   visibility?: "public" | "private";
@@ -20,6 +21,55 @@ export type SummaryDetail = SummaryListItem & {
 
 type MeResponse = { id: string; email: string; name: string; avatar?: string };
 
+function asObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object") return value as Record<string, unknown>;
+  return {};
+}
+
+function pickId(value: unknown): string {
+  const obj = asObject(value);
+  const id = obj.id ?? obj._id;
+  return typeof id === "string" ? id : "";
+}
+
+function mapSummaryListItem(raw: unknown): SummaryListItem | null {
+  const obj = asObject(raw);
+  const id = pickId(obj);
+  if (!id) return null;
+  return {
+    id,
+    title: String(obj.title ?? ""),
+    platform: String(obj.platform ?? "Unknown"),
+    createdAt: String(obj.createdAt ?? new Date().toISOString()),
+    preview: String(obj.preview ?? obj.summaryText ?? ""),
+    tags: Array.isArray(obj.tags)
+      ? obj.tags.map((tag) => {
+          const t = asObject(tag);
+          return {
+            _id: t._id == null ? undefined : String(t._id),
+            name: t.name == null ? undefined : String(t.name),
+            color: t.color == null ? undefined : String(t.color),
+          };
+        })
+      : [],
+    starred: obj.starred === true,
+    workspaceId: obj.workspaceId == null ? null : String(obj.workspaceId),
+    visibility: obj.visibility === "public" ? "public" : "private",
+  };
+}
+
+function mapSummaryDetail(raw: unknown): SummaryDetail | null {
+  const base = mapSummaryListItem(raw);
+  if (!base) return null;
+  const obj = asObject(raw);
+  return {
+    ...base,
+    summaryText: String(obj.summaryText ?? ""),
+    url: String(obj.url ?? ""),
+    ownerId: obj.ownerId == null ? undefined : String(obj.ownerId),
+  };
+}
+
 async function getServerCookieHeader(): Promise<string | undefined> {
   try {
     const { cookies } = await import("next/headers");
@@ -29,14 +79,17 @@ async function getServerCookieHeader(): Promise<string | undefined> {
     if (allCookies.length === 0) return undefined;
     return allCookies.map(c => `${c.name}=${c.value}`).join("; ");
   } catch (error) {
-    console.error("Cookie extract error:", error);
+    const msg = String((error as Error)?.message ?? error);
+    if (!msg.includes("Dynamic server usage")) {
+      console.error("Cookie extract error:", error);
+    }
     return undefined;
   }
 }
 
 export async function fetchSummaries(): Promise<SummaryListItem[]> {
   const cookieHeader = await getServerCookieHeader();
-  const res = await fetch(`${API_BASE_URL}/api/summaries`, {
+  const res = await fetch(await serverApiUrl("/api/summaries"), {
     credentials: "include",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
     cache: "no-store",
@@ -56,13 +109,16 @@ export async function fetchSummaries(): Promise<SummaryListItem[]> {
     // is down or auth cookies are missing/invalid.
     return [];
   }
-  const data = await res.json();
-  return data.items ?? [];
+  const data = asObject(await res.json());
+  const items = Array.isArray(data.items) ? data.items : [];
+  return items
+    .map(mapSummaryListItem)
+    .filter((item: SummaryListItem | null): item is SummaryListItem => item !== null);
 }
 
 export async function fetchSummary(id: string): Promise<SummaryDetail | null> {
   const cookieHeader = await getServerCookieHeader();
-  const res = await fetch(`${API_BASE_URL}/api/summaries/${id}`, {
+  const res = await fetch(await serverApiUrl(`/api/summaries/${id}`), {
     credentials: "include",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
     cache: "no-store",
@@ -82,7 +138,7 @@ export async function fetchSummary(id: string): Promise<SummaryDetail | null> {
     return null;
   }
   const data = await res.json();
-  return data as SummaryDetail;
+  return mapSummaryDetail(data);
 }
 
 export type WorkspaceTag = { _id?: string; id?: string; name?: string; color?: string };
@@ -106,7 +162,7 @@ export type WorkspaceDetail = {
 
 export async function fetchWorkspaceDetail(id: string): Promise<WorkspaceDetail | null> {
   const cookieHeader = await getServerCookieHeader();
-  const res = await fetch(`${API_BASE_URL}/api/workspaces/${encodeURIComponent(id)}`, {
+  const res = await fetch(await serverApiUrl(`/api/workspaces/${encodeURIComponent(id)}`), {
     credentials: "include",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
     cache: "no-store",
@@ -115,13 +171,36 @@ export async function fetchWorkspaceDetail(id: string): Promise<WorkspaceDetail 
     if (res.status === 404) return null;
     throw new Error("Failed to load workspace");
   }
-  const data = await res.json();
-  return data as WorkspaceDetail;
+  const data = asObject(await res.json());
+  const summariesRaw = Array.isArray(data.summaries) ? data.summaries : [];
+  const summaries: WorkspaceSummaryListItem[] = [];
+  for (const raw of summariesRaw) {
+    const item = mapSummaryListItem(raw);
+    if (!item) continue;
+    const obj = asObject(raw);
+    summaries.push({
+      ...item,
+      preview: obj.preview == null ? undefined : String(obj.preview),
+      url: obj.url == null ? undefined : String(obj.url),
+    });
+  }
+
+  return {
+    id: pickId(data),
+    name: String(data.name ?? ""),
+    description: data.description == null ? undefined : String(data.description),
+    tags: Array.isArray(data.tags) ? (data.tags as WorkspaceTag[]) : [],
+    createdAt: data.createdAt == null ? undefined : String(data.createdAt),
+    starred: data.starred === true,
+    summaryCount: typeof data.summaryCount === "number" ? data.summaryCount : summaries.length,
+    summariesLength: typeof data.summariesLength === "number" ? data.summariesLength : summaries.length,
+    summaries,
+  };
 }
 
 export async function fetchMe() {
   const cookieHeader = await getServerCookieHeader();
-  const res = await fetch(`${API_BASE_URL}/api/me`, {
+  const res = await fetch(await serverApiUrl("/api/me"), {
     credentials: "include",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
     cache: "no-store",
@@ -161,7 +240,7 @@ export type NotificationsListResponse = {
 
 export async function fetchNotificationsUnreadCount(): Promise<{ unread: number }> {
   const cookieHeader = await getServerCookieHeader();
-  const res = await fetch(`${API_BASE_URL}/api/notifications/unread-count`, {
+  const res = await fetch(await serverApiUrl("/api/notifications/unread-count"), {
     credentials: "include",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
     cache: "no-store",
@@ -179,7 +258,7 @@ export async function fetchNotificationsList(options?: {
   if (options?.limit != null) params.set("limit", String(options.limit));
   if (options?.groupLimit != null) params.set("groupLimit", String(options.groupLimit));
   const q = params.toString();
-  const url = `${API_BASE_URL}/api/notifications/list${q ? `?${q}` : ""}`;
+  const url = `${await serverApiUrl("/api/notifications/list")}${q ? `?${q}` : ""}`;
   const res = await fetch(url, {
     credentials: "include",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
@@ -191,7 +270,7 @@ export async function fetchNotificationsList(options?: {
 
 export async function markNotificationsSeen(): Promise<{ ok: true; unread: number }> {
   const cookieHeader = await getServerCookieHeader();
-  const res = await fetch(`${API_BASE_URL}/api/notifications/mark-seen`, {
+  const res = await fetch(await serverApiUrl("/api/notifications/mark-seen"), {
     method: "POST",
     credentials: "include",
     headers: {
@@ -206,7 +285,7 @@ export async function markNotificationsSeen(): Promise<{ ok: true; unread: numbe
 
 export async function enableSummaryShare(id: string): Promise<boolean> {
   const cookieHeader = await getServerCookieHeader();
-  const res = await fetch(`${API_BASE_URL}/api/summaries/${encodeURIComponent(id)}/share`, {
+  const res = await fetch(await serverApiUrl(`/api/summaries/${encodeURIComponent(id)}/share`), {
     method: "POST",
     credentials: "include",
     headers: {
@@ -234,12 +313,12 @@ export async function enableSummaryShare(id: string): Promise<boolean> {
 }
 
 export async function fetchSharedSummary(id: string): Promise<SummaryDetail | null> {
-  const res = await fetch(`${API_BASE_URL}/api/shared/summaries/${encodeURIComponent(id)}`, {
+  const res = await fetch(await serverApiUrl(`/api/shared/summaries/${encodeURIComponent(id)}`), {
     cache: "no-store",
   });
   if (!res.ok) return null;
   const data = await res.json();
-  return data as SummaryDetail;
+  return mapSummaryDetail(data);
 }
 
 /** Public social feed (all users’ visibility: public summaries). */
@@ -282,7 +361,7 @@ export async function fetchSocialFeed(options?: {
   if (options?.limit != null) params.set("limit", String(options.limit));
   if (options?.skip != null) params.set("skip", String(options.skip));
   const q = params.toString();
-  const url = `${API_BASE_URL}/api/social/feed${q ? `?${q}` : ""}`;
+  const url = `${await serverApiUrl("/api/social/feed")}${q ? `?${q}` : ""}`;
   const res = await fetch(url, {
     credentials: "include",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
@@ -292,20 +371,56 @@ export async function fetchSocialFeed(options?: {
     console.warn("Failed to load social feed", res.status);
     return { items: [], hasMore: false };
   }
-  const data = await res.json();
-  return data as SocialFeedResponse;
+  const data = asObject(await res.json());
+  const items = Array.isArray(data.items) ? data.items : [];
+  return {
+    items: items.map((raw) => {
+      const obj = asObject(raw);
+      return {
+        id: pickId(obj),
+        title: String(obj.title ?? ""),
+        platform: String(obj.platform ?? "Unknown"),
+        preview: String(obj.preview ?? ""),
+        summaryText: String(obj.summaryText ?? ""),
+        url: String(obj.url ?? ""),
+        createdAt: String(obj.createdAt ?? new Date().toISOString()),
+        author: asObject(obj.author) as SocialAuthor,
+        likeCount: typeof obj.likeCount === "number" ? obj.likeCount : 0,
+        commentCount: typeof obj.commentCount === "number" ? obj.commentCount : 0,
+        likedByMe: obj.likedByMe === true,
+        savedByMe: obj.savedByMe === true,
+        ownerId: obj.ownerId == null ? undefined : String(obj.ownerId),
+      };
+    }),
+    hasMore: data.hasMore === true,
+  };
 }
 
 export async function fetchSocialSummary(id: string): Promise<SocialSummaryDetail | null> {
   const cookieHeader = await getServerCookieHeader();
-  const res = await fetch(`${API_BASE_URL}/api/social/summaries/${encodeURIComponent(id)}`, {
+  const res = await fetch(await serverApiUrl(`/api/social/summaries/${encodeURIComponent(id)}`), {
     credentials: "include",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
     cache: "no-store",
   });
   if (!res.ok) return null;
-  const data = await res.json();
-  return data as SocialSummaryDetail;
+  const data = asObject(await res.json());
+  return {
+    id: pickId(data),
+    title: String(data.title ?? ""),
+    platform: String(data.platform ?? "Unknown"),
+    preview: String(data.preview ?? ""),
+    summaryText: String(data.summaryText ?? ""),
+    url: String(data.url ?? ""),
+    createdAt: String(data.createdAt ?? new Date().toISOString()),
+    author: asObject(data.author) as SocialAuthor,
+    likeCount: typeof data.likeCount === "number" ? data.likeCount : 0,
+    commentCount: typeof data.commentCount === "number" ? data.commentCount : 0,
+    likedByMe: data.likedByMe === true,
+    savedByMe: data.savedByMe === true,
+    ownerId: data.ownerId == null ? undefined : String(data.ownerId),
+    tags: Array.isArray(data.tags) ? (data.tags as WorkspaceTagLike[]) : [],
+  };
 }
 
 export async function fetchSocialSaved(options?: {
@@ -317,7 +432,7 @@ export async function fetchSocialSaved(options?: {
   if (options?.limit != null) params.set("limit", String(options.limit));
   if (options?.skip != null) params.set("skip", String(options.skip));
   const q = params.toString();
-  const url = `${API_BASE_URL}/api/social/saved${q ? `?${q}` : ""}`;
+  const url = `${await serverApiUrl("/api/social/saved")}${q ? `?${q}` : ""}`;
   const res = await fetch(url, {
     credentials: "include",
     headers: cookieHeader ? { cookie: cookieHeader } : undefined,
@@ -327,7 +442,29 @@ export async function fetchSocialSaved(options?: {
     console.warn("Failed to load social saved", res.status);
     return { items: [], hasMore: false };
   }
-  const data = await res.json();
-  return data as SocialSavedResponse;
+  const data = asObject(await res.json());
+  const items = Array.isArray(data.items) ? data.items : [];
+  return {
+    items: items.map((raw) => {
+      const obj = asObject(raw);
+      return {
+        id: pickId(obj),
+        title: String(obj.title ?? ""),
+        platform: String(obj.platform ?? "Unknown"),
+        preview: String(obj.preview ?? ""),
+        summaryText: String(obj.summaryText ?? ""),
+        url: String(obj.url ?? ""),
+        createdAt: String(obj.createdAt ?? new Date().toISOString()),
+        author: asObject(obj.author) as SocialAuthor,
+        likeCount: typeof obj.likeCount === "number" ? obj.likeCount : 0,
+        commentCount: typeof obj.commentCount === "number" ? obj.commentCount : 0,
+        likedByMe: obj.likedByMe === true,
+        savedByMe: obj.savedByMe === true,
+        bookmarkedAt: String(obj.bookmarkedAt ?? obj.createdAt ?? new Date().toISOString()),
+        ownerId: obj.ownerId == null ? undefined : String(obj.ownerId),
+      };
+    }),
+    hasMore: data.hasMore === true,
+  };
 }
 

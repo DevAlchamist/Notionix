@@ -1,10 +1,8 @@
 "use client";
 
+import { clientApiUrl } from "@/lib/apiBase";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 type Props = {
   summaryId: string;
@@ -22,7 +20,7 @@ export function DeleteSummaryButton({ summaryId, className }: Props) {
     setError(null);
     setIsDeleting(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/summaries/${encodeURIComponent(summaryId)}`, {
+      const res = await fetch(clientApiUrl(`/api/summaries/${encodeURIComponent(summaryId)}`), {
         method: "DELETE",
         credentials: "include",
       });

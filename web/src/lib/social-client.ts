@@ -1,8 +1,7 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+import { clientApiUrl } from "@/lib/apiBase";
 
 export async function fetchMeClient(): Promise<{ id: string; email: string; name: string; avatar?: string } | null> {
-  const res = await fetch(`${API_BASE_URL}/api/me`, { credentials: "include", cache: "no-store" });
+  const res = await fetch(clientApiUrl("/api/me"), { credentials: "include", cache: "no-store" });
   if (!res.ok) return null;
   return res.json();
 }
@@ -19,7 +18,7 @@ export type SocialCommentsResponse = { items: SocialCommentItem[]; hasMore: bool
 
 export async function socialPostLike(summaryId: string): Promise<{ liked: true; likeCount: number }> {
   const res = await fetch(
-    `${API_BASE_URL}/api/social/summaries/${encodeURIComponent(summaryId)}/like`,
+    clientApiUrl(`/api/social/summaries/${encodeURIComponent(summaryId)}/like`),
     { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } },
   );
   if (!res.ok) throw new Error("Failed to like");
@@ -28,7 +27,7 @@ export async function socialPostLike(summaryId: string): Promise<{ liked: true; 
 
 export async function socialDeleteLike(summaryId: string): Promise<{ liked: false; likeCount: number }> {
   const res = await fetch(
-    `${API_BASE_URL}/api/social/summaries/${encodeURIComponent(summaryId)}/like`,
+    clientApiUrl(`/api/social/summaries/${encodeURIComponent(summaryId)}/like`),
     { method: "DELETE", credentials: "include" },
   );
   if (!res.ok) throw new Error("Failed to unlike");
@@ -37,7 +36,7 @@ export async function socialDeleteLike(summaryId: string): Promise<{ liked: fals
 
 export async function socialPostSave(summaryId: string): Promise<{ saved: true }> {
   const res = await fetch(
-    `${API_BASE_URL}/api/social/summaries/${encodeURIComponent(summaryId)}/save`,
+    clientApiUrl(`/api/social/summaries/${encodeURIComponent(summaryId)}/save`),
     { method: "POST", credentials: "include", headers: { "Content-Type": "application/json" } },
   );
   if (!res.ok) throw new Error("Failed to save");
@@ -46,7 +45,7 @@ export async function socialPostSave(summaryId: string): Promise<{ saved: true }
 
 export async function socialDeleteSave(summaryId: string): Promise<{ saved: false }> {
   const res = await fetch(
-    `${API_BASE_URL}/api/social/summaries/${encodeURIComponent(summaryId)}/save`,
+    clientApiUrl(`/api/social/summaries/${encodeURIComponent(summaryId)}/save`),
     { method: "DELETE", credentials: "include" },
   );
   if (!res.ok) throw new Error("Failed to remove save");
@@ -62,7 +61,7 @@ export async function socialFetchComments(
   if (options?.skip != null) params.set("skip", String(options.skip));
   const q = params.toString();
   const res = await fetch(
-    `${API_BASE_URL}/api/social/summaries/${encodeURIComponent(summaryId)}/comments${q ? `?${q}` : ""}`,
+    `${clientApiUrl(`/api/social/summaries/${encodeURIComponent(summaryId)}/comments`)}${q ? `?${q}` : ""}`,
     { credentials: "include", cache: "no-store" },
   );
   if (!res.ok) throw new Error("Failed to load comments");
@@ -71,7 +70,7 @@ export async function socialFetchComments(
 
 export async function socialPostComment(summaryId: string, body: string): Promise<SocialCommentItem> {
   const res = await fetch(
-    `${API_BASE_URL}/api/social/summaries/${encodeURIComponent(summaryId)}/comments`,
+    clientApiUrl(`/api/social/summaries/${encodeURIComponent(summaryId)}/comments`),
     {
       method: "POST",
       credentials: "include",
@@ -88,7 +87,9 @@ export async function socialDeleteComment(
   commentId: string,
 ): Promise<void> {
   const res = await fetch(
-    `${API_BASE_URL}/api/social/summaries/${encodeURIComponent(summaryId)}/comments/${encodeURIComponent(commentId)}`,
+    clientApiUrl(
+      `/api/social/summaries/${encodeURIComponent(summaryId)}/comments/${encodeURIComponent(commentId)}`,
+    ),
     { method: "DELETE", credentials: "include" },
   );
   if (!res.ok) throw new Error("Failed to delete comment");

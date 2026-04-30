@@ -15,12 +15,16 @@
     "windows"
   ],
   "host_permissions": [
-    "http://localhost:4000/*",
+    "http://localhost:3000/*",
     "https://accounts.google.com/*",
     "https://chatgpt.com/*",
     "https://chat.openai.com/*",
     "https://claude.ai/*",
-    "https://gemini.google.com/*"
+    "https://gemini.google.com/*",
+    "https://copilot.microsoft.com/*",
+    "https://www.bing.com/*",
+    "https://grok.com/*",
+    "https://x.com/i/grok*"
   ],
   "background": {
     "service_worker": "dist/background.js",
@@ -52,6 +56,18 @@
       ],
       "js": [
         "dist/content-gemini.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://copilot.microsoft.com/*",
+        "https://www.bing.com/*",
+        "https://grok.com/*",
+        "https://x.com/i/grok*"
+      ],
+      "js": [
+        "dist/content-chatgpt.js"
       ],
       "run_at": "document_idle"
     }

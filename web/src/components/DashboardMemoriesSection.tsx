@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SummaryListItem } from "@/lib/api";
 import { InsightCard } from "@/components/InsightCard";
 import { SummaryCard } from "@/components/SummaryCard";
+import { clientApiUrl } from "@/lib/apiBase";
 
 type FilterTab = "all" | "recents" | "starred";
 
@@ -35,6 +36,66 @@ export function DashboardMemoriesSection({ initialSummaries, initialQuery = "" }
   const [summaries, setSummaries] = useState<SummaryListItem[]>(initialSummaries);
   const [filter, setFilter] = useState<FilterTab>("all");
   const [query, setQuery] = useState(initialQuery);
+  const [isHydratingFromApi, setIsHydratingFromApi] = useState(initialSummaries.length === 0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const queryText = query.trim();
+    const hydrateFromApi = async () => {
+      try {
+        const qs = new URLSearchParams();
+        if (queryText.length > 0) {
+          qs.set("query", queryText);
+          qs.set("limit", "50");
+        }
+        const endpoint = qs.size > 0 ? `/api/summaries?${qs.toString()}` : "/api/summaries";
+        const res = await fetch(clientApiUrl(endpoint), {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const rawItems = Array.isArray(data?.items) ? data.items : [];
+        const normalized: SummaryListItem[] = rawItems
+          .map((item: any) => {
+            const id = String(item?.id ?? item?._id ?? "").trim();
+            if (!id) return null;
+            return {
+              id,
+              title: String(item?.title ?? ""),
+              platform: String(item?.platform ?? "Unknown"),
+              createdAt: String(item?.createdAt ?? new Date().toISOString()),
+              preview: String(item?.preview ?? item?.summaryText ?? ""),
+              tags: Array.isArray(item?.tags)
+                ? item.tags.map((tag: any) => ({
+                    _id: tag?._id ? String(tag._id) : undefined,
+                    name: tag?.name ? String(tag.name) : undefined,
+                    color: tag?.color ? String(tag.color) : undefined,
+                  }))
+                : [],
+              starred: item?.starred === true,
+              workspaceId: item?.workspaceId ? String(item.workspaceId) : null,
+              visibility: item?.visibility === "public" ? "public" : "private",
+            } satisfies SummaryListItem;
+          })
+          .filter((item: SummaryListItem | null): item is SummaryListItem => item !== null);
+        if (!cancelled) {
+          setSummaries(normalized);
+        }
+      } catch {
+        // Keep server-rendered summaries if client hydration fetch fails.
+      } finally {
+        if (!cancelled) {
+          setIsHydratingFromApi(false);
+        }
+      }
+    };
+
+    void hydrateFromApi();
+    return () => {
+      cancelled = true;
+    };
+  }, [query]);
 
   const updateSummaryStar = useCallback((summaryId: string, starred: boolean) => {
     setSummaries((prev) => prev.map((s) => (s.id === summaryId ? { ...s, starred } : s)));
@@ -52,7 +113,10 @@ export function DashboardMemoriesSection({ initialSummaries, initialQuery = "" }
       list = list.filter((s) => {
         const title = (s.title || "").toLowerCase();
         const platform = (s.platform || "").toLowerCase();
-        return title.includes(q) || platform.includes(q);
+        const tags = Array.isArray(s.tags)
+          ? s.tags.map((t) => String(t?.name ?? "").toLowerCase()).join(" ")
+          : "";
+        return title.includes(q) || platform.includes(q) || tags.includes(q);
       });
     }
     return list;
@@ -100,9 +164,13 @@ export function DashboardMemoriesSection({ initialSummaries, initialQuery = "" }
               <line x1="10" y1="9" x2="8" y2="9" />
             </svg>
           </div>
-          <h3 className="text-[22px] font-extrabold text-slate-800 mb-2">No summaries captured yet</h3>
+          <h3 className="text-[22px] font-extrabold text-slate-800 mb-2">
+            {isHydratingFromApi ? "Loading summaries..." : "No summaries captured yet"}
+          </h3>
           <p className="text-[#5e6b7c] text-[15px] max-w-sm mx-auto mb-8 font-medium">
-            Use the Notionix Chrome extension to instantly save insights from your AI conversations.
+            {isHydratingFromApi
+              ? "Syncing your saved memories from the API."
+              : "Use the Notionix Chrome extension to instantly save insights from your AI conversations."}
           </p>
           <a
             href="#"

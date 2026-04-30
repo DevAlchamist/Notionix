@@ -4,12 +4,13 @@ import { EntityStarButton } from "@/components/EntityStarButton";
 import { SummaryShareButton } from "@/components/SummaryShareButton";
 import { SummaryVisibilityToggle } from "@/components/SummaryVisibilityToggle";
 import { DeleteSummaryButton } from "@/components/DeleteSummaryButton";
+import { ContinueInAiActions } from "@/components/ContinueInAiActions";
+import { buildContinueAgentLinks, buildContinuationPrompt } from "@/lib/agentRedirect";
 import {
   formatCapturedAgo,
   parseStructuredSummary,
   sanitizeSummaryText,
   platformCategoryBadge,
-  suggestTags,
   truncateUrl,
 } from "@/lib/parseSummary";
 
@@ -64,7 +65,7 @@ export default async function MemoryDetailPage({ params }: Props) {
   if (!summary) {
     return (
       <main className="min-h-0 flex-1 overflow-y-auto w-full">
-        <div className="mx-auto max-w-[1200px] px-8 md:px-12 py-16">
+        <div className="mx-auto max-w-[1200px] px-4 py-12 sm:px-6 md:px-12 md:py-16">
           <p className="text-sm text-slate-600">Memory not found.</p>
           <Link
             href="/dashboard"
@@ -81,7 +82,10 @@ export default async function MemoryDetailPage({ params }: Props) {
   const parsed = parseStructuredSummary(cleanedSummaryText);
   const badge = platformCategoryBadge(summary.platform);
   const captured = formatCapturedAgo(summary.createdAt);
-  const tags = suggestTags(summary.platform, summary.title);
+  const tags = (summary.tags ?? [])
+    .map((tag) => String(tag?.name ?? "").trim())
+    .filter((name) => name.length > 0)
+    .slice(0, 8);
 
   const preambleText = parsed.preamble.join("\n").trim();
   const mainTopicText =
@@ -102,27 +106,12 @@ export default async function MemoryDetailPage({ params }: Props) {
       ? mainTopicText.split("\n")[0]?.slice(0, 220)
       : null);
 
-  const continuationPrompt = [
-    "Use this summary as context and continue the conversation from it.",
-    "",
-    `Title: ${summary.title}`,
-    "",
-    "Summary:",
-    cleanedSummaryText.trim(),
-  ].join("\n");
-
-  const encodedPrompt = encodeURIComponent(continuationPrompt);
-  const continueAgents = [
-    { name: "ChatGPT", href: `https://chatgpt.com/?q=${encodedPrompt}` },
-    { name: "Claude", href: `https://claude.ai/new?q=${encodedPrompt}` },
-    { name: "Gemini", href: `https://gemini.google.com/app?prompt=${encodedPrompt}` },
-    { name: "Bing Copilot", href: `https://copilot.microsoft.com/?prompt=${encodedPrompt}` },
-    { name: "Grok", href: `https://grok.com/?q=${encodedPrompt}` },
-  ];
+  const continuationPrompt = buildContinuationPrompt(summary.title, cleanedSummaryText);
+  const continueAgents = buildContinueAgentLinks(continuationPrompt);
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto w-full bg-[#f8f9fb]">
-      <div className="mx-auto max-w-[1280px] px-8 md:px-12 py-10 pb-24">
+      <div className="mx-auto max-w-[1280px] px-4 py-8 pb-24 sm:px-6 md:px-12 md:py-10">
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.12em] text-slate-500 hover:text-slate-800 mb-8"
@@ -205,7 +194,7 @@ export default async function MemoryDetailPage({ params }: Props) {
           </div>
 
           {/* Right sidebar */}
-          <aside className="w-full xl:w-[320px] shrink-0 space-y-5">
+          <aside className="w-full shrink-0 space-y-5 xl:w-[300px]">
             <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
               <h3 className="text-[10px] font-bold tracking-[0.15em] text-slate-400 uppercase mb-2">
                 Context
@@ -246,16 +235,20 @@ export default async function MemoryDetailPage({ params }: Props) {
               <h3 className="text-[10px] font-bold tracking-[0.15em] text-slate-400 uppercase mb-3">
                 Tags
               </h3>
-              <div className="flex flex-wrap gap-2">
-                {tags.map((t) => (
-                  <span
-                    key={t}
-                    className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600"
-                  >
-                    #{t}
-                  </span>
-                ))}
-              </div>
+              {tags.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {tags.map((t, idx) => (
+                    <span
+                      key={`${summary.id}-${idx}-${t}`}
+                      className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600"
+                    >
+                      #{t}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500">No tags attached.</p>
+              )}
             </div>
 
             <div className="rounded-2xl border border-slate-200/80 bg-white p-5 shadow-sm">
@@ -265,20 +258,7 @@ export default async function MemoryDetailPage({ params }: Props) {
               <p className="text-xs text-slate-500 mb-3">
                 Open a new chat with this memory summary as the starting context.
               </p>
-              <div className="grid grid-cols-1 gap-2">
-                {continueAgents.map((agent) => (
-                  <a
-                    key={agent.name}
-                    href={agent.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium text-[#4B5CC4] hover:bg-slate-100"
-                  >
-                    <span>{agent.name}</span>
-                    <span aria-hidden>↗</span>
-                  </a>
-                ))}
-              </div>
+              <ContinueInAiActions prompt={continuationPrompt} links={continueAgents} />
             </div>
           </aside>
         </div>

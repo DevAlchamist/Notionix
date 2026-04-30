@@ -1,7 +1,7 @@
 import { API_BASE, type AuthUser } from "./googleAuth.js";
 import { deriveSummaryTitle, extractTitleAndSummary } from "./summaryderive.js";
 
-type Platform = "ChatGPT" | "Claude" | "Gemini" | "Unknown";
+type Platform = "ChatGPT" | "Claude" | "Gemini" | "Bing" | "Grok" | "Unknown";
 
 type SummaryItem = {
   id: string;
@@ -19,6 +19,8 @@ let qcTagSuggestTimer: number | null = null;
 let qcTagSuggestAbort: AbortController | null = null;
 let qcTagSuggestItems: TagSuggestion[] = [];
 let qcTagSuggestActiveIndex = -1;
+
+let insertSummaryHandler: ((summaryId: string) => void) | null = null;
 
 function setStatus(text: string) {
   const signedInStatus = document.getElementById("status-text");
@@ -52,12 +54,31 @@ function renderSummaries(list: SummaryItem[]) {
 
     const meta = document.createElement("div");
     meta.className = "summary-meta";
-    const date = new Date(item.createdAt).toLocaleString();
-    meta.textContent = `${date}`;
+    const dateEl = document.createElement("span");
+    dateEl.textContent = new Date(item.createdAt).toLocaleString();
+
+    const insertBtn = document.createElement("button");
+    insertBtn.type = "button";
+    insertBtn.className = "summary-insert-btn";
+    insertBtn.title = "Insert into current AI chat";
+    insertBtn.setAttribute("aria-label", "Insert into current AI chat");
+    insertBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      void insertSummaryHandler?.(item.id);
+    });
+    insertBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14"/>
+        <path d="M5 12h14"/>
+      </svg>
+    `;
 
     const badge = document.createElement("span");
     badge.className = "badge";
     badge.textContent = item.platform;
+    // Note: `.summary-meta` uses `flex-direction: row-reverse`, so append order is important.
+    meta.appendChild(insertBtn);
+    meta.appendChild(dateEl);
     meta.appendChild(badge);
 
     div.appendChild(title);
@@ -86,6 +107,17 @@ const PERSONAL_WORKSPACE_LABEL = "Personal workspace";
 
 let qcWorkspaceRows: { id: string; name: string }[] = [];
 let qcSelectedWorkspaceId = "";
+
+function asObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object") return value as Record<string, unknown>;
+  return {};
+}
+
+function pickId(value: unknown): string {
+  const obj = asObject(value);
+  const id = obj.id ?? obj._id;
+  return typeof id === "string" ? id : "";
+}
 
 function normalizeTagName(raw: string): string {
   return String(raw ?? "")
@@ -216,7 +248,7 @@ async function qcFetchTagSuggest(token: string, query: string) {
       const items = Array.isArray(data?.items) ? data.items : [];
       qcTagSuggestItems = items
         .map((it: any) => ({
-          id: String(it?.id ?? ""),
+          id: pickId(it),
           name: normalizeTagName(it?.name ?? ""),
           count: typeof it?.count === "number" ? it.count : undefined,
         }))
@@ -342,10 +374,14 @@ async function fetchWorkspaces(token: string) {
     });
     if (res.ok) {
       const data = await res.json();
-      const items = (data.items || []).map((w: { id?: string; name?: string }) => ({
-        id: String(w.id ?? ""),
-        name: String(w.name ?? "Untitled"),
-      }));
+      const rawItems = Array.isArray(data?.items) ? data.items : [];
+      const items = rawItems.map((w: unknown) => {
+        const obj = asObject(w);
+        return {
+          id: pickId(obj),
+          name: String(obj.name ?? "Untitled"),
+        };
+      });
       qcRenderWorkspaceOptions(items.filter((x: { id: string }) => x.id.length > 0));
     }
   } catch (e) {
@@ -377,13 +413,15 @@ async function saveSummary(summaryData: any, token: string) {
        });
        if (tRes.ok) {
          const tData = await tRes.json();
-         finalTagIds.push(tData.id);
+         const createdId = pickId(tData);
+         if (createdId) finalTagIds.push(createdId);
        } else if (tRes.status === 400) {
          const allTagsRes = await fetch(`${API_BASE}/api/tags`, { headers: { Authorization: `Bearer ${token}` } });
          if (allTagsRes.ok) {
             const allData = await allTagsRes.json();
             const existing = allData.items.find((item: any) => item.name === t);
-            if (existing) finalTagIds.push(existing.id);
+            const existingId = pickId(existing);
+            if (existingId) finalTagIds.push(existingId);
          }
        }
     } catch {}
@@ -415,6 +453,13 @@ async function saveSummary(summaryData: any, token: string) {
     saveBtn.disabled = false;
 
     if (res.ok) {
+      const sourceTabId = typeof summaryData?.sourceTabId === "number" ? summaryData.sourceTabId : null;
+      if (sourceTabId !== null) {
+        chrome.tabs.sendMessage(sourceTabId, { type: "SHOW_CAPTURE_SAVED_INDICATOR" }, () => {
+          // Ignore if the source tab no longer has an active content script.
+          void chrome.runtime.lastError;
+        });
+      }
       hideQuickCaptureView();
       setStatus("Summary saved.");
       fetchRecentSummaries(token);
@@ -446,7 +491,20 @@ async function fetchRecentSummaries(token: string | null) {
       throw new Error("Failed to load summaries");
     }
     const data = await res.json();
-    allRecentSummaries = (data.items ?? []) as SummaryItem[];
+    const rawItems = Array.isArray(data?.items) ? data.items : [];
+    allRecentSummaries = rawItems
+      .map((raw: unknown) => {
+        const obj = asObject(raw);
+        const id = pickId(obj);
+        if (!id) return null;
+        return {
+          id,
+          title: String(obj.title ?? ""),
+          platform: String(obj.platform ?? "Unknown") as Platform,
+          createdAt: String(obj.createdAt ?? new Date().toISOString()),
+        };
+      })
+      .filter((item: SummaryItem | null): item is SummaryItem => item !== null);
     applySummarySearch();
   } catch (err) {
     setStatus("Unable to load summaries.");
@@ -461,7 +519,11 @@ function isSupportedConversationUrl(url: string) {
       hostname === "chatgpt.com" ||
       hostname === "chat.openai.com" ||
       hostname === "claude.ai" ||
-      hostname === "gemini.google.com"
+      hostname === "gemini.google.com" ||
+      hostname === "www.bing.com" ||
+      hostname === "copilot.microsoft.com" ||
+      hostname === "grok.com" ||
+      hostname === "x.com"
     );
   } catch {
     return false;
@@ -474,9 +536,25 @@ function contentScriptFileForUrl(url: string): string | null {
     if (hostname === "chatgpt.com" || hostname === "chat.openai.com") return "dist/content-chatgpt.js";
     if (hostname === "claude.ai") return "dist/content-claude.js";
     if (hostname === "gemini.google.com") return "dist/content-gemini.js";
+    if (hostname === "www.bing.com" || hostname === "copilot.microsoft.com") return "dist/content-chatgpt.js";
+    if (hostname === "grok.com" || hostname === "x.com") return "dist/content-chatgpt.js";
     return null;
   } catch {
     return null;
+  }
+}
+
+function detectPlatformFromUrl(url: string): Platform {
+  try {
+    const { hostname } = new URL(url);
+    if (hostname === "chatgpt.com" || hostname === "chat.openai.com") return "ChatGPT";
+    if (hostname === "claude.ai") return "Claude";
+    if (hostname === "gemini.google.com") return "Gemini";
+    if (hostname === "www.bing.com" || hostname === "copilot.microsoft.com") return "Bing";
+    if (hostname === "grok.com" || hostname === "x.com") return "Grok";
+    return "Unknown";
+  } catch {
+    return "Unknown";
   }
 }
 
@@ -546,17 +624,141 @@ function renderUser(user: AuthUser) {
 async function init() {
   const loginBtn = document.getElementById("login-btn") as HTMLButtonElement;
   const logoutBtn = document.getElementById("logout-btn") as HTMLButtonElement;
-  const summarizeBtn = document.getElementById(
-    "summarize-btn",
-  ) as HTMLButtonElement;
+  const captureBtn = document.getElementById("agent-capture-btn") as HTMLButtonElement | null;
 
   let { token: authToken, user: cachedUser } = await getStoredAuth();
 
   function updateAuthUI() {
-    summarizeBtn.disabled = !authToken;
+    if (captureBtn) captureBtn.disabled = !authToken;
   }
 
   updateAuthUI();
+
+  function buildContinuePrompt(title: string, summaryText: string): string {
+    return [
+      "Use this summary as context and continue the conversation from it.",
+      "",
+      `Title: ${title}`,
+      "",
+      "Summary:",
+      String(summaryText ?? "").trim(),
+    ].join("\n");
+  }
+
+  async function ensureContentScriptForTab(tabId: number, tabUrl: string): Promise<void> {
+    const file = contentScriptFileForUrl(tabUrl);
+    if (!file) return;
+    await new Promise<void>((resolve) => {
+      chrome.scripting.executeScript(
+        { target: { tabId }, files: [file], world: "ISOLATED" },
+        () => resolve(),
+      );
+    });
+  }
+
+  insertSummaryHandler = async (summaryId: string) => {
+    if (!authToken) {
+      setStatus("Please sign in first.");
+      return;
+    }
+
+    setStatus("Inserting into active AI…");
+
+    const [activeTab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+
+    const tabId = activeTab?.id;
+    const tabUrl = activeTab?.url;
+
+    if (!tabId || !tabUrl) {
+      setStatus("No active tab.");
+      return;
+    }
+
+    if (!isSupportedConversationUrl(tabUrl)) {
+      setStatus("Open a ChatGPT, Claude, Gemini, Copilot, or Grok chat tab to insert.");
+      return;
+    }
+
+    const res = await fetch(`${API_BASE}/api/summaries/${encodeURIComponent(summaryId)}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+
+    if (!res.ok) {
+      setStatus("Unable to load summary details.");
+      return;
+    }
+
+    const summary = await res.json();
+    const title = String(summary?.title ?? "");
+    const summaryText = String(summary?.summaryText ?? "");
+    const prompt = buildContinuePrompt(title, summaryText);
+
+    const payload = { type: "INJECT_CONTINUE_PROMPT", prompt };
+
+    await new Promise<void>((resolve) => {
+      chrome.tabs.sendMessage(tabId, payload, async (response) => {
+        const err = chrome.runtime.lastError;
+        if (err) {
+          // If the receiver isn't ready yet, inject and retry once.
+          await ensureContentScriptForTab(tabId, tabUrl);
+          window.setTimeout(() => {
+            chrome.tabs.sendMessage(tabId, payload, (response2) => {
+              const err2 = chrome.runtime.lastError;
+              if (err2) {
+                setStatus(`Insert failed: ${err2.message}`);
+                resolve();
+                return;
+              }
+              const ok = Boolean((response2 as any)?.ok);
+              const reason =
+                (response2 as any)?.reason ||
+                (response2 as any)?.error ||
+                "Insert failed.";
+              if (ok) {
+                setStatus("Inserted. Continue in the input box.");
+                resolve();
+                return;
+              }
+              void navigator.clipboard
+                .writeText(prompt)
+                .then(() =>
+                  setStatus(
+                    `Could not insert automatically. Prompt copied - paste into the input box. (${String(reason)})`,
+                  ),
+                )
+                .catch(() => setStatus(`Could not insert automatically. (${String(reason)})`));
+              resolve();
+            });
+          }, 500);
+          return;
+        }
+
+        const ok = Boolean((response as any)?.ok);
+        const reason =
+          (response as any)?.reason || (response as any)?.error || "Insert failed.";
+
+        if (ok) {
+          setStatus("Inserted. Continue in the input box.");
+          resolve();
+          return;
+        }
+
+        void navigator.clipboard
+          .writeText(prompt)
+          .then(() =>
+            setStatus(
+              `Could not insert automatically. Prompt copied - paste into the input box. (${String(reason)})`,
+            ),
+          )
+          .catch(() => setStatus(`Could not insert automatically. (${String(reason)})`));
+        resolve();
+
+      });
+    });
+  };
 
   if (authToken) {
     try {
@@ -703,7 +905,7 @@ async function init() {
     qcHideTagSuggest();
   });
 
-  summarizeBtn.addEventListener("click", () => {
+  const startCapture = () => {
     if (!authToken) {
       setStatus("Please sign in first.");
       return;
@@ -716,7 +918,16 @@ async function init() {
         return;
       }
       if (!isSupportedConversationUrl(tabUrl)) {
-        setStatus("Open ChatGPT/Claude/Gemini to summarize.");
+        setStatus("Open a ChatGPT, Claude, or Gemini tab to capture.");
+        return;
+      }
+      const detectedPlatform = detectPlatformFromUrl(tabUrl);
+      if (
+        detectedPlatform !== "ChatGPT" &&
+        detectedPlatform !== "Claude" &&
+        detectedPlatform !== "Gemini"
+      ) {
+        setStatus("Open a ChatGPT, Claude, or Gemini tab to capture.");
         return;
       }
 
@@ -769,6 +980,10 @@ async function init() {
         );
       });
     });
+  };
+
+  captureBtn?.addEventListener("click", () => {
+    startCapture();
   });
 
   chrome.storage.onChanged.addListener((changes, areaName) => {

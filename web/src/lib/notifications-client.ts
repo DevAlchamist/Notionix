@@ -1,5 +1,4 @@
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
+import { clientApiUrl } from "@/lib/apiBase";
 
 export type NotificationEventItem = {
   id: string;
@@ -26,7 +25,7 @@ export type NotificationsListResponse = {
 };
 
 export async function getUnreadCount(): Promise<number> {
-  const res = await fetch(`${API_BASE_URL}/api/notifications/unread-count`, {
+  const res = await fetch(clientApiUrl("/api/notifications/unread-count"), {
     credentials: "include",
     cache: "no-store",
   });
@@ -44,7 +43,7 @@ export async function getList(options?: {
   if (options?.groupLimit != null) params.set("groupLimit", String(options.groupLimit));
   const q = params.toString();
   const res = await fetch(
-    `${API_BASE_URL}/api/notifications/list${q ? `?${q}` : ""}`,
+    `${clientApiUrl("/api/notifications/list")}${q ? `?${q}` : ""}`,
     { credentials: "include", cache: "no-store" },
   );
   if (!res.ok) return { newEvents: [], olderGroups: [] };
@@ -52,7 +51,7 @@ export async function getList(options?: {
 }
 
 export async function markSeen(): Promise<number> {
-  const res = await fetch(`${API_BASE_URL}/api/notifications/mark-seen`, {
+  const res = await fetch(clientApiUrl("/api/notifications/mark-seen"), {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
@@ -68,7 +67,7 @@ export function subscribeToNotificationsStream(handlers: {
   onRefresh?: () => void;
   onError?: () => void;
 }): { close: () => void } {
-  const es = new EventSource(`${API_BASE_URL}/api/notifications/stream`, {
+  const es = new EventSource(clientApiUrl("/api/notifications/stream"), {
     withCredentials: true,
   } as any);
 

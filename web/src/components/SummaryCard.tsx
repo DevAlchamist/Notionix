@@ -9,6 +9,8 @@ interface SummaryCardProps {
     title: string;
     platform: string;
     createdAt: string;
+    preview?: string;
+    tags?: Array<{ _id?: string; name?: string; color?: string }>;
     starred?: boolean;
   };
   viewsLabel: string;
@@ -25,13 +27,11 @@ export function SummaryCard({ summary, viewsLabel, onStarredChange }: SummaryCar
   else if (isClaude) badgeBg = "bg-[#F3E5F5] text-[#8e24aa]";
   else if (isPerplexity) badgeBg = "bg-[#E0F7FA] text-[#00838f]";
 
-  const mockedDesc =
-    "Explored complex topics and system architectures. Discussed various paradigms to optimize overall performance and user experience.";
-  const tags = isChatGPT
-    ? ["#code", "#backend"]
-    : isClaude
-      ? ["#marketing", "#copywriting"]
-      : ["#design", "#research"];
+  const description = summary.preview?.trim() || "No summary preview available.";
+  const tags = (summary.tags ?? [])
+    .map((tag) => String(tag?.name ?? "").trim())
+    .filter((name) => name.length > 0)
+    .slice(0, 3);
 
   return (
     <div className="relative h-full">
@@ -53,19 +53,21 @@ export function SummaryCard({ summary, viewsLabel, onStarredChange }: SummaryCar
           </h2>
 
           <p className="text-[13px] text-[#5e6b7c] leading-relaxed line-clamp-3 mb-5 flex-1">
-            {mockedDesc}
+            {description}
           </p>
 
-          <div className="flex gap-2 mb-4">
-            {tags.map((tag, idx) => (
-              <span
-                key={idx}
-                className="rounded-md bg-indigo-50/50 px-2 py-1 text-[11px] font-semibold text-notionix-primary"
-              >
-                {tag}
-              </span>
-            ))}
-          </div>
+          {tags.length > 0 ? (
+            <div className="flex gap-2 mb-4">
+              {tags.map((tag, idx) => (
+                <span
+                  key={`${summary.id}-${idx}-${tag}`}
+                  className="rounded-md bg-indigo-50/50 px-2 py-1 text-[11px] font-semibold text-notionix-primary"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          ) : null}
 
           <div className="flex items-center justify-between text-[11px] font-medium text-slate-400 pt-3 border-t border-slate-50">
             <div className="flex items-center gap-1.5">

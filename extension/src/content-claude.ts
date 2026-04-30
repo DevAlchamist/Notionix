@@ -29,28 +29,106 @@ async function waitFor<T>(
 }
 
 export function getInputElement(): HTMLTextAreaElement | HTMLDivElement | null {
-  const textarea = document.querySelector<HTMLTextAreaElement>(
-    "textarea[aria-label*='Message'], textarea[placeholder*='Message'], textarea[placeholder*='message'], textarea",
-  );
-  if (textarea) return textarea;
-
-  const div = document.querySelector<HTMLDivElement>(
-    "div[contenteditable='true'][role='textbox'], div[contenteditable='plaintext-only'][role='textbox'], div[contenteditable='true'], div[contenteditable='plaintext-only']",
-  );
-  return div;
+  const selectors = [
+    "textarea[aria-label*='Message']",
+    "textarea[placeholder*='Message']",
+    "textarea[placeholder*='message']",
+    "textarea",
+    "div[contenteditable='true'][role='textbox']",
+    "div[contenteditable='plaintext-only'][role='textbox']",
+    "div[contenteditable='true']",
+    "div[contenteditable='plaintext-only']",
+  ];
+  const candidates: Array<HTMLTextAreaElement | HTMLDivElement> = [];
+  for (const sel of selectors) {
+    const nodes = document.querySelectorAll(sel);
+    for (const node of Array.from(nodes)) {
+      if ((node instanceof HTMLTextAreaElement || node instanceof HTMLDivElement) && isElementVisible(node)) {
+        candidates.push(node);
+      }
+    }
+  }
+  if (!candidates.length) return null;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement) {
+    for (const c of candidates) {
+      if (c === active || c.contains(active)) return c;
+    }
+  }
+  return candidates[candidates.length - 1] ?? null;
 }
 
 export function getSendButton(): HTMLButtonElement | null {
-  const btn =
-    document.querySelector<HTMLButtonElement>("button[type='submit']") ||
-    document.querySelector<HTMLButtonElement>("button[aria-label*='Send']") ||
-    document.querySelector<HTMLButtonElement>("button[aria-label='Send message']");
-  return btn ?? null;
+  const selectors = [
+    "button[type='submit']",
+    "button[aria-label*='Send']",
+    "button[aria-label='Send message']",
+  ];
+  for (const sel of selectors) {
+    const nodes = document.querySelectorAll<HTMLButtonElement>(sel);
+    for (const node of Array.from(nodes)) {
+      if (isElementVisible(node)) return node;
+    }
+  }
+  return null;
 }
 
-export async function insertPromptAndSend() {
+function isElementVisible(el: HTMLElement): boolean {
+  if (!el.isConnected) return false;
+  if (el.getAttribute("aria-hidden") === "true") return false;
+  const style = window.getComputedStyle(el);
+  if (style.display === "none" || style.visibility === "hidden") return false;
+  if (el.offsetParent === null && style.position !== "fixed") return false;
+  return true;
+}
+
+function getComposerRootFromInput(input: HTMLElement): HTMLElement {
+  let walk: HTMLElement | null = input;
+  for (let d = 0; d < 10 && walk; d++) {
+    if (walk.tagName === "FORM" || walk.getAttribute("role") === "form") return walk;
+    walk = walk.parentElement;
+  }
+  return input.parentElement ?? input;
+}
+
+function getSendButtonForInput(input: HTMLTextAreaElement | HTMLDivElement | null): HTMLButtonElement | null {
+  if (!input) return null;
+  let walk: HTMLElement | null = input;
+  for (let depth = 0; depth < 12 && walk; depth++) {
+    const local = walk.querySelectorAll<HTMLButtonElement>(
+      "button[type='submit'],button[aria-label*='Send'],button[aria-label='Send message']",
+    );
+    for (const btn of Array.from(local)) {
+      if (isElementVisible(btn) && walk.contains(btn)) return btn;
+    }
+    walk = walk.parentElement;
+  }
+  return null;
+}
+
+function getScopedSendButtonForMount(): HTMLButtonElement | null {
+  const input = getInputElement();
+  if (!input) return null;
+  const local = getSendButtonForInput(input);
+  if (local) return local;
+  const root = getComposerRootFromInput(input);
+  const nearby = root.querySelectorAll<HTMLButtonElement>(
+    "button[type='submit'],button[aria-label*='Send'],button[aria-label='Send message']",
+  );
+  for (const btn of Array.from(nearby)) {
+    if (isElementVisible(btn)) return btn;
+  }
+  return null;
+}
+
+export async function insertPromptAndSend(autoSave = false) {
   const input = await waitFor(getInputElement, 10000);
-  const sendBtn = await waitFor(getSendButton, 10000);
+  const sendBtn = await waitFor(() => {
+    const scoped = getSendButtonForInput(input);
+    if (scoped) return scoped;
+    const global = getSendButton();
+    return global && isElementVisible(global) ? global : null;
+  }, 10000);
   if (!input) {
     chrome.runtime.sendMessage({
       type: "SUMMARIZE_STATUS",
@@ -88,8 +166,9 @@ export async function insertPromptAndSend() {
 
   await delay(150);
   const enabledBtn = await waitFor(() => {
-    const btn = getSendButton();
-    return btn && !btn.disabled ? btn : null;
+    const scoped = getSendButtonForInput(input);
+    const btn = scoped ?? getSendButton();
+    return btn && !btn.disabled && isElementVisible(btn) ? btn : null;
   }, 5000);
   try {
     (enabledBtn ?? sendBtn).click();
@@ -102,7 +181,72 @@ export async function insertPromptAndSend() {
     status: "waiting_ai",
   });
 
-  watchForSummaryResponse(beforeAssistantCount, beforeAssistantLastText);
+  watchForSummaryResponse(beforeAssistantCount, beforeAssistantLastText, autoSave);
+}
+
+function mountCaptureButton() {
+  const already = document.querySelector<HTMLButtonElement>(
+    "button[data-ai-remember-capture='true']",
+  );
+  const button = already ?? createCaptureButton();
+  styleFloatingCaptureButton(button);
+  if (!button.isConnected || button.parentElement !== document.documentElement) {
+    document.documentElement.appendChild(button);
+  }
+}
+
+function readContinuationPromptFromUrl(): string | null {
+  try {
+    const u = new URL(window.location.href);
+    const raw = u.searchParams.get("air_continue");
+    if (!raw) return null;
+    const prompt = raw.trim();
+    return prompt.length > 0 ? prompt : null;
+  } catch {
+    return null;
+  }
+}
+
+async function prefillContinuationPromptFromUrl(): Promise<void> {
+  const prompt = readContinuationPromptFromUrl();
+  if (!prompt) return;
+  const input = await waitFor(getInputElement, 15000);
+  if (!input) return;
+
+  if (input instanceof HTMLTextAreaElement) {
+    input.focus();
+    input.value = prompt;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return;
+  }
+
+  input.focus();
+  input.innerText = prompt;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+async function insertContinuePromptIntoInput(prompt: string): Promise<void> {
+  const trimmed = String(prompt ?? "").trim();
+  if (!trimmed) return;
+
+  const input = await waitFor(getInputElement, 15000);
+  if (!input) throw new Error("Unable to find chat input.");
+
+  if (input instanceof HTMLTextAreaElement) {
+    const existing = String(input.value ?? "");
+    input.focus();
+    input.value = existing.trim().length ? `${existing}\n\n${trimmed}` : trimmed;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return;
+  }
+
+  const existing = String(input.textContent ?? "");
+  input.focus();
+  input.innerText = existing.trim().length ? `${existing}\n\n${trimmed}` : trimmed;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 export function extractLatestAssistantMessage(): string | null {
@@ -115,6 +259,7 @@ export function extractLatestAssistantMessage(): string | null {
 export function watchForSummaryResponse(
   beforeAssistantCount: number,
   beforeAssistantLastText: string | null,
+  autoSave: boolean,
   timeoutMs = 60000,
 ) {
   const container = document.body;
@@ -150,6 +295,7 @@ export function watchForSummaryResponse(
       summaryText: text,
       url: window.location.href,
       createdAt: new Date().toISOString(),
+      autoSave,
     });
   });
 
@@ -168,12 +314,112 @@ export function watchForSummaryResponse(
   });
 }
 
+function showCaptureIndicator(message: string, tone: "success" | "error" = "success") {
+  const id = "ai-remember-capture-indicator";
+  const existing = document.getElementById(id);
+  if (existing) existing.remove();
+
+  const node = document.createElement("div");
+  node.id = id;
+  node.textContent = message;
+  node.style.position = "fixed";
+  node.style.top = "14px";
+  node.style.right = "14px";
+  node.style.zIndex = "2147483647";
+  node.style.padding = "8px 12px";
+  node.style.borderRadius = "10px";
+  node.style.fontSize = "12px";
+  node.style.fontWeight = "600";
+  node.style.boxShadow = "0 8px 24px rgba(0,0,0,0.25)";
+  node.style.color = "#fff";
+  node.style.background = tone === "success" ? "#127a3f" : "#8a1c1c";
+  document.documentElement.appendChild(node);
+  window.setTimeout(() => node.remove(), 3200);
+}
+
+function styleFloatingCaptureButton(captureBtn: HTMLButtonElement) {
+  captureBtn.style.position = "fixed";
+  captureBtn.style.right = "18px";
+  captureBtn.style.bottom = "18px";
+  captureBtn.style.zIndex = "2147483647";
+  captureBtn.style.minWidth = "84px";
+  captureBtn.style.height = "40px";
+  captureBtn.style.padding = "0 14px";
+  captureBtn.style.borderRadius = "9999px";
+  captureBtn.style.border = "1px solid rgba(255,255,255,0.2)";
+  captureBtn.style.background = "#111827";
+  captureBtn.style.color = "#f9fafb";
+  captureBtn.style.boxShadow = "0 10px 28px rgba(0,0,0,0.35)";
+  captureBtn.style.fontSize = "13px";
+  captureBtn.style.fontWeight = "600";
+  captureBtn.style.lineHeight = "1";
+  captureBtn.style.cursor = "pointer";
+}
+
+function createCaptureButton(): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.dataset.aiRememberCapture = "true";
+  btn.textContent = "Capture";
+  styleFloatingCaptureButton(btn);
+
+  btn.addEventListener("click", () => {
+    insertPromptAndSend(true).catch(() => {
+      showCaptureIndicator("Capture failed to start", "error");
+    });
+  });
+  return btn;
+}
+
+function startCaptureButtonObserver() {
+  mountCaptureButton();
+  let scheduled = false;
+  const observer = new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    window.requestAnimationFrame(() => {
+      scheduled = false;
+      mountCaptureButton();
+    });
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
 chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
   if (message.type === "INJECT_SUMMARY_PROMPT") {
     sendResponse({ ok: true });
-    insertPromptAndSend();
+    insertPromptAndSend(Boolean(message?.autoSave));
+    return;
+  }
+  if (message.type === "INJECT_CONTINUE_PROMPT") {
+    void insertContinuePromptIntoInput(String(message?.prompt ?? "")).then(() => {
+      sendResponse({ ok: true });
+    }).catch((err) => {
+      sendResponse({ ok: false, reason: String(err?.message ?? err) });
+    });
+    return true;
+  }
+  if (message.type === "PING_CAPTURE_READY") {
+    sendResponse({ ok: true });
+    return;
+  }
+  if (message.type === "SHOW_CAPTURE_SAVED_INDICATOR") {
+    sendResponse({ ok: true });
+    showCaptureIndicator("Saved to Memory");
+    return;
+  }
+  if (message.type === "SHOW_CAPTURE_ERROR_INDICATOR") {
+    sendResponse({ ok: true });
+    const reason =
+      typeof message?.reason === "string" && message.reason.trim().length
+        ? message.reason.trim()
+        : "Capture could not be saved.";
+    showCaptureIndicator(reason, "error");
     return;
   }
   sendResponse({ ok: false });
 });
+
+startCaptureButtonObserver();
+void prefillContinuationPromptFromUrl();
 

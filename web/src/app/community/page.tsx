@@ -3,8 +3,8 @@ export default function CommunityPage() {
     <div className="min-h-screen bg-[#FDFDFD] font-sans selection:bg-notionix-primary/20">
       <div className="h-1 w-full bg-notionix-primary/20" />
 
-      <header className="mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4">
-        <div className="flex items-center gap-10">
+      <header className="mx-auto flex w-full max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-4 sm:px-6">
+        <div className="flex items-center gap-6 sm:gap-10">
           <span className="text-xl font-bold tracking-tight text-slate-900">
             Notionix
           </span>
@@ -20,12 +20,12 @@ export default function CommunityPage() {
             </a>
           </nav>
         </div>
-        <div className="flex items-center gap-4">
-          <a href="http://localhost:4000/api/auth/google" className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+        <div className="flex items-center gap-3 sm:gap-4">
+          <a href="/api/auth/google" className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
             Login
           </a>
           <a
-            href="http://localhost:4000/api/auth/google"
+            href="/api/auth/google"
             className="rounded-lg bg-notionix-primary px-4 py-2 text-sm font-medium text-white shadow-sm transition-opacity hover:opacity-90 active:scale-95"
           >
             Get Started
@@ -33,7 +33,7 @@ export default function CommunityPage() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-7xl px-6 pb-10 pt-12 md:pt-16">
+      <main className="mx-auto max-w-7xl px-4 pb-10 pt-10 sm:px-6 md:pt-16">
         <div className="grid grid-cols-1 gap-14 lg:grid-cols-2 lg:gap-10 lg:items-center">
           <div className="max-w-xl">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full bg-indigo-50 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#788ca6]">
@@ -57,7 +57,7 @@ export default function CommunityPage() {
               Social feature guide
             </div>
 
-            <h1 className="text-5xl font-extrabold tracking-tight text-[#1a1f2e] sm:text-6xl lg:text-[64px] leading-[1.05]">
+            <h1 className="text-4xl font-extrabold leading-[1.08] tracking-tight text-[#1a1f2e] sm:text-5xl lg:text-[64px]">
               Share and discover <span className="text-notionix-primary">public summaries</span>.
             </h1>
 
@@ -209,7 +209,7 @@ export default function CommunityPage() {
         </div>
       </main>
 
-      <section id="how" className="mx-auto max-w-7xl px-6 py-24">
+      <section id="how" className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-24">
         <div className="text-center mb-14">
           <h2 className="text-4xl font-extrabold tracking-tight text-slate-900">How Social works</h2>
           <p className="mt-4 text-[15px] font-medium text-slate-500 max-w-2xl mx-auto leading-relaxed">
@@ -298,7 +298,7 @@ export default function CommunityPage() {
         </div>
       </section>
 
-      <section id="trending" className="mx-auto max-w-7xl px-6 pb-24">
+      <section id="trending" className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 sm:pb-24">
         <div className="grid grid-cols-1 gap-10 lg:grid-cols-12 lg:items-start">
           <div className="lg:col-span-4">
             <h2 className="text-[28px] font-extrabold tracking-tight text-slate-900 leading-tight">
@@ -461,7 +461,7 @@ export default function CommunityPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-6 pb-24">
+      <section className="mx-auto max-w-7xl px-4 pb-20 sm:px-6 sm:pb-24">
         <div className="rounded-[32px] bg-[#0b0f17] px-6 py-20 text-center shadow-xl overflow-hidden relative">
           <div className="pointer-events-none absolute inset-0 bg-linear-to-r from-notionix-primary/25 via-transparent to-indigo-400/10" />
           <div className="relative mx-auto flex max-w-3xl flex-col items-center">
@@ -483,7 +483,7 @@ export default function CommunityPage() {
                 Browse Social feed
               </a>
               <a
-                href="http://localhost:4000/api/auth/google"
+                href="/api/auth/google"
                 className="inline-flex h-12 items-center justify-center rounded-lg border border-slate-800 bg-transparent px-8 text-[15px] font-semibold text-white transition hover:bg-slate-900"
               >
                 Sign in to post
@@ -494,7 +494,7 @@ export default function CommunityPage() {
       </section>
 
       <footer className="border-t border-slate-100 bg-[#FAFAFA] pt-20 pb-10">
-        <div className="mx-auto max-w-7xl px-6">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
           <div className="grid grid-cols-2 md:grid-cols-6 gap-10 lg:gap-8 mb-20">
             <div className="col-span-2">
               <span className="text-xl font-bold tracking-tight text-slate-900 block mb-6">

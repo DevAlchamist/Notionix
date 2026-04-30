@@ -50,7 +50,7 @@ export default async function SharedSummaryPage({ params }: Props) {
   if (!summary) {
     return (
       <main className="min-h-screen w-full bg-[#f8f9fb]">
-        <div className="mx-auto max-w-[900px] px-8 md:px-12 py-16">
+        <div className="mx-auto max-w-[900px] px-4 py-12 sm:px-6 md:px-12 md:py-16">
           <p className="text-sm font-semibold text-slate-700">This link is not available.</p>
           <p className="mt-2 text-sm text-slate-500">
             The owner may have not shared this summary, or the link is invalid.
@@ -78,7 +78,7 @@ export default async function SharedSummaryPage({ params }: Props) {
 
   return (
     <main className="min-h-screen w-full bg-[#f8f9fb]">
-      <div className="mx-auto max-w-[980px] px-8 md:px-12 py-10 pb-24">
+      <div className="mx-auto max-w-[980px] px-4 py-8 pb-24 sm:px-6 md:px-12 md:py-10">
         <div className="flex flex-wrap items-center gap-3 mb-6">
           <span className="rounded-md bg-indigo-100 px-2.5 py-1 text-[10px] font-bold tracking-wider text-indigo-800">
             {badge}

@@ -1,11 +1,9 @@
 "use client";
 
+import { EntityStarButton } from "@/components/EntityStarButton";
+import { clientApiUrl } from "@/lib/apiBase";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { EntityStarButton } from "@/components/EntityStarButton";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 type WorkspaceTag = { _id?: string; id?: string; name?: string };
 type WorkspaceItem = {
@@ -60,7 +58,7 @@ export default function WorkspacesPage() {
     setIsLoadingWorkspaces(true);
     setWorkspaceLoadError(null);
     try {
-      const res = await fetch(`${API_BASE_URL}/api/workspaces`, {
+      const res = await fetch(clientApiUrl("/api/workspaces"), {
         credentials: "include",
       });
       if (!res.ok) {
@@ -121,7 +119,7 @@ export default function WorkspacesPage() {
       .filter(Boolean);
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/workspaces`, {
+      const res = await fetch(clientApiUrl("/api/workspaces"), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -161,7 +159,7 @@ export default function WorkspacesPage() {
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto w-full">
-      <div className="mx-auto max-w-[1200px] px-8 md:px-12 py-12 pb-32">
+      <div className="mx-auto max-w-[1200px] px-4 py-8 pb-28 sm:px-6 md:px-12 md:py-12 md:pb-32">
         
         {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-start justify-between mb-8 gap-6">
@@ -221,7 +219,7 @@ export default function WorkspacesPage() {
                       </div>
                     </div>
 
-                    <h3 className="text-[30px] font-bold text-slate-800 leading-tight tracking-tight line-clamp-1">
+                    <h3 className="text-[24px] font-bold leading-tight tracking-tight text-slate-800 line-clamp-1 sm:text-[30px]">
                       {workspace.name}
                     </h3>
                     <p className="mt-2 text-[15px] text-slate-500 leading-relaxed line-clamp-2 min-h-[44px]">
@@ -279,7 +277,7 @@ export default function WorkspacesPage() {
                 className="rounded-[16px] border-2 border-dashed border-slate-200 bg-slate-50/50 p-5 min-h-[264px] flex flex-col items-center justify-center text-center hover:border-indigo-200 hover:bg-indigo-50/30 transition-all"
               >
                 <div className="h-11 w-11 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-2xl mb-3">+</div>
-                <p className="text-[30px] font-bold text-slate-700 leading-tight">New Space</p>
+                <p className="text-[24px] font-bold leading-tight text-slate-700 sm:text-[30px]">New Space</p>
                 <p className="mt-2 text-sm text-slate-500">Start a fresh context for your ideas.</p>
               </button>
             </div>
@@ -287,7 +285,7 @@ export default function WorkspacesPage() {
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_260px] gap-4 mb-6">
               <div className="rounded-[12px] bg-[#eef1f4] border border-slate-200/70 p-6">
                 <p className="text-[12px] font-bold tracking-[0.12em] text-[#4B5CC4] uppercase">Memory Health</p>
-                <p className="mt-3 text-[36px] font-bold text-slate-800 leading-tight">
+                <p className="mt-3 text-[30px] font-bold leading-tight text-slate-800 sm:text-[36px]">
                   You have <span className="text-[#4B5CC4]">{workspaces.length}</span> active spaces.
                 </p>
                 <div className="mt-5 grid grid-cols-1 sm:grid-cols-2 gap-3">

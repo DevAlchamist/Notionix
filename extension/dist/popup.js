@@ -2,6 +2,11 @@ import { API_BASE } from "./googleAuth.js";
 import { deriveSummaryTitle, extractTitleAndSummary } from "./summaryderive.js";
 let allRecentSummaries = [];
 let currentSummarySearch = "";
+let insertSummaryHandler = null;
+let qcTagSuggestTimer = null;
+let qcTagSuggestAbort = null;
+let qcTagSuggestItems = [];
+let qcTagSuggestActiveIndex = -1;
 function setStatus(text) {
     const signedInStatus = document.getElementById("status-text");
     const loginStatus = document.getElementById("login-status");
@@ -35,11 +40,30 @@ function renderSummaries(list) {
         title.textContent = item.title || "(Untitled)";
         const meta = document.createElement("div");
         meta.className = "summary-meta";
-        const date = new Date(item.createdAt).toLocaleString();
-        meta.textContent = `${date}`;
+        const dateEl = document.createElement("span");
+        dateEl.textContent = new Date(item.createdAt).toLocaleString();
+        const insertBtn = document.createElement("button");
+        insertBtn.type = "button";
+        insertBtn.className = "summary-insert-btn";
+        insertBtn.title = "Insert into current AI chat";
+        insertBtn.setAttribute("aria-label", "Insert into current AI chat");
+        insertBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            if (insertSummaryHandler)
+                insertSummaryHandler(item.id);
+        });
+        insertBtn.innerHTML = `
+      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 5v14"/>
+        <path d="M5 12h14"/>
+      </svg>
+    `;
         const badge = document.createElement("span");
         badge.className = "badge";
         badge.textContent = item.platform;
+        // `.summary-meta` uses `flex-direction: row-reverse`, so append order matters.
+        meta.appendChild(insertBtn);
+        meta.appendChild(dateEl);
         meta.appendChild(badge);
         div.appendChild(title);
         div.appendChild(meta);
@@ -63,6 +87,145 @@ let currentPendingSummary = null;
 const PERSONAL_WORKSPACE_LABEL = "Personal workspace";
 let qcWorkspaceRows = [];
 let qcSelectedWorkspaceId = "";
+function asObject(value) {
+    if (value && typeof value === "object")
+        return value;
+    return {};
+}
+function pickId(value) {
+    const obj = asObject(value);
+    const id = obj.id ?? obj._id;
+    return typeof id === "string" ? id : "";
+}
+function normalizeTagName(raw) {
+    return String(raw ?? "")
+        .replace(/^#/, "")
+        .trim()
+        .replace(/\s+/g, " ");
+}
+function qcGetTagsInputEl() {
+    return document.getElementById("qc-tags-input");
+}
+function qcGetSuggestEl() {
+    return document.getElementById("qc-tags-suggest");
+}
+function qcParseCommaTags(value) {
+    return value
+        .split(",")
+        .map((t) => normalizeTagName(t))
+        .filter((t) => t.length > 0);
+}
+function qcActiveSegment(value) {
+    const idx = value.lastIndexOf(",");
+    if (idx === -1)
+        return { prefix: "", query: normalizeTagName(value) };
+    const prefix = value.slice(0, idx + 1); // include comma
+    const query = normalizeTagName(value.slice(idx + 1));
+    return { prefix, query };
+}
+function qcHideTagSuggest() {
+    const el = qcGetSuggestEl();
+    if (!el)
+        return;
+    el.hidden = true;
+    el.innerHTML = "";
+    qcTagSuggestItems = [];
+    qcTagSuggestActiveIndex = -1;
+}
+function qcRenderTagSuggest() {
+    const el = qcGetSuggestEl();
+    if (!el)
+        return;
+    el.innerHTML = "";
+    if (!qcTagSuggestItems.length) {
+        el.hidden = true;
+        return;
+    }
+    for (let i = 0; i < qcTagSuggestItems.length; i++) {
+        const item = qcTagSuggestItems[i];
+        if (!item)
+            continue;
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "qc-tags-suggest-item";
+        btn.setAttribute("role", "option");
+        btn.dataset.id = item.id;
+        btn.dataset.name = item.name;
+        btn.dataset.index = String(i);
+        if (i === qcTagSuggestActiveIndex)
+            btn.dataset.active = "true";
+        const name = document.createElement("span");
+        name.className = "qc-tags-suggest-name";
+        name.textContent = `#${item.name}`;
+        const meta = document.createElement("span");
+        meta.className = "qc-tags-suggest-meta";
+        meta.textContent = typeof item.count === "number" ? `Used ${item.count}` : "";
+        btn.appendChild(name);
+        btn.appendChild(meta);
+        btn.addEventListener("mousedown", (e) => {
+            // prevent input blur before click handler runs
+            e.preventDefault();
+        });
+        btn.addEventListener("click", () => {
+            qcApplyTagSuggestion(item.name);
+        });
+        el.appendChild(btn);
+    }
+    el.hidden = false;
+}
+function qcApplyTagSuggestion(name) {
+    const input = qcGetTagsInputEl();
+    if (!input)
+        return;
+    const { prefix } = qcActiveSegment(input.value || "");
+    const normalized = normalizeTagName(name);
+    const beforePrefix = prefix;
+    const existing = qcParseCommaTags(beforePrefix);
+    const already = existing.some((t) => t.toLowerCase() === normalized.toLowerCase());
+    const nextPrefix = beforePrefix.trimEnd();
+    const glue = nextPrefix.length === 0 ? "" : nextPrefix.endsWith(",") ? `${nextPrefix} ` : `${nextPrefix}, `;
+    input.value = already ? `${nextPrefix} ` : `${glue}${normalized}, `;
+    qcHideTagSuggest();
+    input.focus();
+}
+async function qcFetchTagSuggest(token, query) {
+    if (qcTagSuggestTimer) {
+        window.clearTimeout(qcTagSuggestTimer);
+        qcTagSuggestTimer = null;
+    }
+    if (qcTagSuggestAbort) {
+        qcTagSuggestAbort.abort();
+        qcTagSuggestAbort = null;
+    }
+    qcTagSuggestTimer = window.setTimeout(async () => {
+        try {
+            const controller = new AbortController();
+            qcTagSuggestAbort = controller;
+            const res = await fetch(`${API_BASE}/api/tags/suggest?query=${encodeURIComponent(query)}&limit=10`, { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
+            if (!res.ok)
+                throw new Error("suggest failed");
+            const data = await res.json();
+            const items = Array.isArray(data?.items) ? data.items : [];
+            qcTagSuggestItems = items
+                .map((it) => ({
+                id: pickId(it),
+                name: normalizeTagName(it?.name ?? ""),
+                count: typeof it?.count === "number" ? it.count : undefined,
+            }))
+                .filter((it) => it.id && it.name);
+            qcTagSuggestActiveIndex = qcTagSuggestItems.length ? 0 : -1;
+            qcRenderTagSuggest();
+        }
+        catch (err) {
+            if (err?.name === "AbortError")
+                return;
+            qcHideTagSuggest();
+        }
+        finally {
+            qcTagSuggestAbort = null;
+        }
+    }, 250);
+}
 function qcSyncTriggerLabel() {
     const label = document.getElementById("qc-workspace-label");
     if (!label)
@@ -160,6 +323,7 @@ function hideQuickCaptureView() {
     const tagsInput = document.getElementById("qc-tags-input");
     if (tagsInput)
         tagsInput.value = "";
+    qcHideTagSuggest();
     qcSetSelectedWorkspaceId("");
     qcCloseWorkspaceMenu();
 }
@@ -170,10 +334,14 @@ async function fetchWorkspaces(token) {
         });
         if (res.ok) {
             const data = await res.json();
-            const items = (data.items || []).map((w) => ({
-                id: String(w.id ?? ""),
-                name: String(w.name ?? "Untitled"),
-            }));
+            const rawItems = Array.isArray(data?.items) ? data.items : [];
+            const items = rawItems.map((w) => {
+                const obj = asObject(w);
+                return {
+                    id: pickId(obj),
+                    name: String(obj.name ?? "Untitled"),
+                };
+            });
             qcRenderWorkspaceOptions(items.filter((x) => x.id.length > 0));
         }
     }
@@ -188,7 +356,10 @@ async function saveSummary(summaryData, token) {
     const tagsInput = document.getElementById("qc-tags-input");
     const workspaceId = qcSelectedWorkspaceId || undefined;
     const tagsString = tagsInput?.value || "";
-    const tagsTextArray = tagsString.split(",").map(t => t.trim()).filter(t => t.length > 0);
+    const tagsTextArray = tagsString
+        .split(",")
+        .map((t) => normalizeTagName(t))
+        .filter((t) => t.length > 0);
     let finalTagIds = [];
     for (const t of tagsTextArray) {
         try {
@@ -199,15 +370,18 @@ async function saveSummary(summaryData, token) {
             });
             if (tRes.ok) {
                 const tData = await tRes.json();
-                finalTagIds.push(tData.id);
+                const createdId = pickId(tData);
+                if (createdId)
+                    finalTagIds.push(createdId);
             }
             else if (tRes.status === 400) {
                 const allTagsRes = await fetch(`${API_BASE}/api/tags`, { headers: { Authorization: `Bearer ${token}` } });
                 if (allTagsRes.ok) {
                     const allData = await allTagsRes.json();
                     const existing = allData.items.find((item) => item.name === t);
-                    if (existing)
-                        finalTagIds.push(existing.id);
+                    const existingId = pickId(existing);
+                    if (existingId)
+                        finalTagIds.push(existingId);
                 }
             }
         }
@@ -236,6 +410,13 @@ async function saveSummary(summaryData, token) {
         });
         saveBtn.disabled = false;
         if (res.ok) {
+            const sourceTabId = typeof summaryData?.sourceTabId === "number" ? summaryData.sourceTabId : null;
+            if (sourceTabId !== null) {
+                chrome.tabs.sendMessage(sourceTabId, { type: "SHOW_CAPTURE_SAVED_INDICATOR" }, () => {
+                    // Ignore if the source tab no longer has an active content script.
+                    void chrome.runtime.lastError;
+                });
+            }
             hideQuickCaptureView();
             setStatus("Summary saved.");
             fetchRecentSummaries(token);
@@ -267,7 +448,21 @@ async function fetchRecentSummaries(token) {
             throw new Error("Failed to load summaries");
         }
         const data = await res.json();
-        allRecentSummaries = (data.items ?? []);
+        const rawItems = Array.isArray(data?.items) ? data.items : [];
+        allRecentSummaries = rawItems
+            .map((raw) => {
+            const obj = asObject(raw);
+            const id = pickId(obj);
+            if (!id)
+                return null;
+            return {
+                id,
+                title: String(obj.title ?? ""),
+                platform: String(obj.platform ?? "Unknown"),
+                createdAt: String(obj.createdAt ?? new Date().toISOString()),
+            };
+        })
+            .filter((item) => item !== null);
         applySummarySearch();
     }
     catch (err) {
@@ -282,7 +477,11 @@ function isSupportedConversationUrl(url) {
         return (hostname === "chatgpt.com" ||
             hostname === "chat.openai.com" ||
             hostname === "claude.ai" ||
-            hostname === "gemini.google.com");
+            hostname === "gemini.google.com" ||
+            hostname === "www.bing.com" ||
+            hostname === "copilot.microsoft.com" ||
+            hostname === "grok.com" ||
+            hostname === "x.com");
     }
     catch {
         return false;
@@ -297,10 +496,33 @@ function contentScriptFileForUrl(url) {
             return "dist/content-claude.js";
         if (hostname === "gemini.google.com")
             return "dist/content-gemini.js";
+        if (hostname === "www.bing.com" || hostname === "copilot.microsoft.com")
+            return "dist/content-chatgpt.js";
+        if (hostname === "grok.com" || hostname === "x.com")
+            return "dist/content-chatgpt.js";
         return null;
     }
     catch {
         return null;
+    }
+}
+function detectPlatformFromUrl(url) {
+    try {
+        const { hostname } = new URL(url);
+        if (hostname === "chatgpt.com" || hostname === "chat.openai.com")
+            return "ChatGPT";
+        if (hostname === "claude.ai")
+            return "Claude";
+        if (hostname === "gemini.google.com")
+            return "Gemini";
+        if (hostname === "www.bing.com" || hostname === "copilot.microsoft.com")
+            return "Bing";
+        if (hostname === "grok.com" || hostname === "x.com")
+            return "Grok";
+        return "Unknown";
+    }
+    catch {
+        return "Unknown";
     }
 }
 async function getStoredAuth() {
@@ -370,12 +592,99 @@ function renderUser(user) {
 async function init() {
     const loginBtn = document.getElementById("login-btn");
     const logoutBtn = document.getElementById("logout-btn");
-    const summarizeBtn = document.getElementById("summarize-btn");
+    const captureButtons = Array.from(document.querySelectorAll(".agent-capture-btn"));
     let { token: authToken, user: cachedUser } = await getStoredAuth();
     function updateAuthUI() {
-        summarizeBtn.disabled = !authToken;
+        for (const btn of captureButtons)
+            btn.disabled = !authToken;
     }
     updateAuthUI();
+    function buildContinuePrompt(title, summaryText) {
+        return [
+            "Use this summary as context and continue the conversation from it.",
+            "",
+            `Title: ${title}`,
+            "",
+            "Summary:",
+            String(summaryText ?? "").trim(),
+        ].join("\n");
+    }
+    async function ensureContentScriptForTab(tabId, tabUrl) {
+        const file = contentScriptFileForUrl(tabUrl);
+        if (!file)
+            return;
+        await new Promise((resolve) => {
+            chrome.scripting.executeScript({ target: { tabId }, files: [file], world: "ISOLATED" }, () => resolve());
+        });
+    }
+    insertSummaryHandler = async (summaryId) => {
+        if (!authToken) {
+            setStatus("Please sign in first.");
+            return;
+        }
+        setStatus("Inserting into active AI…");
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const tabId = activeTab?.id;
+        const tabUrl = activeTab?.url;
+        if (!tabId || !tabUrl) {
+            setStatus("No active tab.");
+            return;
+        }
+        if (!isSupportedConversationUrl(tabUrl)) {
+            setStatus("Open a ChatGPT, Claude, Gemini, Copilot, or Grok chat tab to insert.");
+            return;
+        }
+        const res = await fetch(`${API_BASE}/api/summaries/${encodeURIComponent(summaryId)}`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+        });
+        if (!res.ok) {
+            setStatus("Unable to load summary details.");
+            return;
+        }
+        const summary = await res.json();
+        const title = String(summary?.title ?? "");
+        const summaryText = String(summary?.summaryText ?? "");
+        const prompt = buildContinuePrompt(title, summaryText);
+        const payload = { type: "INJECT_CONTINUE_PROMPT", prompt };
+        chrome.tabs.sendMessage(tabId, payload, async (response) => {
+            const err = chrome.runtime.lastError;
+            if (err) {
+                await ensureContentScriptForTab(tabId, tabUrl);
+                window.setTimeout(() => {
+                    chrome.tabs.sendMessage(tabId, payload, (response2) => {
+                        const err2 = chrome.runtime.lastError;
+                        if (err2) {
+                            setStatus(`Insert failed: ${err2.message}`);
+                            return;
+                        }
+                        const ok2 = Boolean(response2 && response2.ok);
+                        const reason2 = (response2 && (response2.reason || response2.error)) || "Insert failed.";
+                    if (ok2) {
+                        setStatus("Inserted. Continue in the input box.");
+                    }
+                    else {
+                        navigator.clipboard
+                            .writeText(prompt)
+                            .then(() => setStatus(`Could not insert automatically. Prompt copied - paste into the input box. (${String(reason2)})`))
+                            .catch(() => setStatus(`Could not insert automatically. (${String(reason2)})`));
+                    }
+                    });
+                }, 500);
+                return;
+            }
+            const ok = Boolean(response && response.ok);
+            const reason = (response && (response.reason || response.error)) || "Insert failed.";
+        if (ok) {
+            setStatus("Inserted. Continue in the input box.");
+        }
+        else {
+            navigator.clipboard
+                .writeText(prompt)
+                .then(() => setStatus(`Could not insert automatically. Prompt copied - paste into the input box. (${String(reason)})`))
+                .catch(() => setStatus(`Could not insert automatically. (${String(reason)})`));
+        }
+        });
+    };
     if (authToken) {
         try {
             const me = await fetchMe(authToken);
@@ -413,6 +722,47 @@ async function init() {
     searchInput?.addEventListener("input", () => {
         currentSummarySearch = searchInput.value || "";
         applySummarySearch();
+    });
+    const qcTagsInput = qcGetTagsInputEl();
+    qcTagsInput?.addEventListener("input", () => {
+        if (!authToken)
+            return;
+        const { query } = qcActiveSegment(qcTagsInput.value || "");
+        void qcFetchTagSuggest(authToken, query);
+    });
+    qcTagsInput?.addEventListener("focus", () => {
+        if (!authToken)
+            return;
+        const { query } = qcActiveSegment(qcTagsInput.value || "");
+        void qcFetchTagSuggest(authToken, query);
+    });
+    qcTagsInput?.addEventListener("blur", () => {
+        // delay so click can apply selection
+        window.setTimeout(() => qcHideTagSuggest(), 120);
+    });
+    qcTagsInput?.addEventListener("keydown", (e) => {
+        if (!qcTagSuggestItems.length)
+            return;
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            qcTagSuggestActiveIndex = Math.min(qcTagSuggestActiveIndex + 1, qcTagSuggestItems.length - 1);
+            qcRenderTagSuggest();
+        }
+        else if (e.key === "ArrowUp") {
+            e.preventDefault();
+            qcTagSuggestActiveIndex = Math.max(qcTagSuggestActiveIndex - 1, 0);
+            qcRenderTagSuggest();
+        }
+        else if (e.key === "Enter") {
+            const active = qcTagSuggestItems[qcTagSuggestActiveIndex];
+            if (!active)
+                return;
+            e.preventDefault();
+            qcApplyTagSuggestion(active.name);
+        }
+        else if (e.key === "Escape") {
+            qcHideTagSuggest();
+        }
     });
     loginBtn.addEventListener("click", () => {
         loginBtn.disabled = true;
@@ -473,8 +823,9 @@ async function init() {
     });
     document.addEventListener("click", () => {
         qcCloseWorkspaceMenu();
+        qcHideTagSuggest();
     });
-    summarizeBtn.addEventListener("click", () => {
+    const startCapture = (requiredPlatform) => {
         if (!authToken) {
             setStatus("Please sign in first.");
             return;
@@ -486,7 +837,12 @@ async function init() {
                 return;
             }
             if (!isSupportedConversationUrl(tabUrl)) {
-                setStatus("Open ChatGPT/Claude/Gemini to summarize.");
+                setStatus(`Open a ${requiredPlatform} tab to capture.`);
+                return;
+            }
+            const detectedPlatform = detectPlatformFromUrl(tabUrl);
+            if (detectedPlatform !== requiredPlatform) {
+                setStatus(`Active tab is ${detectedPlatform}. Open ${requiredPlatform} to capture.`);
                 return;
             }
             const tabId = tabs[0]?.id;
@@ -530,7 +886,15 @@ async function init() {
                 });
             });
         });
-    });
+    };
+    for (const btn of captureButtons) {
+        btn.addEventListener("click", () => {
+            const selected = String(btn.dataset.agent ?? "");
+            if (selected === "ChatGPT" || selected === "Claude" || selected === "Gemini") {
+                startCapture(selected);
+            }
+        });
+    }
     chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== "sync" || !changes.authToken)
             return;

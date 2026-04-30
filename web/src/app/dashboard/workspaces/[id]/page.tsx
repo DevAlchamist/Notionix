@@ -218,7 +218,7 @@ export default async function WorkspaceProjectPage({ params }: Props) {
   } catch {
     return (
       <main className="min-h-0 flex-1 overflow-y-auto w-full">
-        <div className="mx-auto max-w-[1200px] px-8 py-16 md:px-12">
+        <div className="mx-auto max-w-[1200px] px-4 py-12 sm:px-6 md:px-12 md:py-16">
           <p className="text-sm font-medium text-red-700">Could not load this workspace. Try again later.</p>
           <Link
             href="/dashboard/workspaces"
@@ -241,7 +241,7 @@ export default async function WorkspaceProjectPage({ params }: Props) {
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto w-full">
-      <div className="mx-auto max-w-[1200px] px-8 pb-28 pt-10 md:px-12">
+      <div className="mx-auto max-w-[1200px] px-4 pb-24 pt-8 sm:px-6 md:px-12 md:pb-28 md:pt-10">
         <nav className="mb-6 text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
           <Link href="/dashboard/workspaces" className="transition-colors hover:text-[#4B5CC4]">
             Spaces
@@ -253,7 +253,7 @@ export default async function WorkspaceProjectPage({ params }: Props) {
         <header className="mb-8 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl">
             <div className="flex flex-wrap items-start gap-3">
-            <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900 md:text-[32px] flex-1 min-w-[200px]">
+            <h1 className="min-w-0 flex-1 text-[24px] font-extrabold tracking-tight text-slate-900 sm:text-[28px] md:text-[32px]">
               Space: {workspace.name}
             </h1>
             <EntityStarButton
@@ -329,7 +329,7 @@ export default async function WorkspaceProjectPage({ params }: Props) {
                 Collaborate
               </button>
             </div>
-            <p className="text-right text-[13px] font-semibold text-slate-500">
+            <p className="text-left text-[13px] font-semibold text-slate-500 sm:text-right">
               Displaying <span className="text-slate-800">{summaries.length}</span>{" "}
               {summaries.length === 1 ? "Summary" : "Summaries"}
             </p>
@@ -367,7 +367,7 @@ export default async function WorkspaceProjectPage({ params }: Props) {
           </>
         )}
 
-        <section className="mt-16 rounded-[24px] border border-slate-100 bg-[#eef1f4] px-8 py-12 text-center">
+        <section className="mt-16 rounded-[24px] border border-slate-100 bg-[#eef1f4] px-5 py-10 text-center sm:px-8 sm:py-12">
           <div className="mx-auto flex max-w-lg flex-col items-center">
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-600 shadow-sm">
               <svg

@@ -12,7 +12,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
 
   return (
     <main className="min-h-0 flex-1 overflow-y-auto w-full">
-      <div className="mx-auto max-w-[1200px] px-8 md:px-12 py-12 pb-32">
+      <div className="mx-auto max-w-[1200px] px-4 py-8 pb-28 sm:px-6 md:px-12 md:py-12 md:pb-32">
         <DashboardMemoriesSection initialSummaries={summaries} initialQuery={initialQuery} />
       </div>
     </main>

@@ -1,5 +1,5 @@
-/** Must match backend URL and Google OAuth client authorized redirect URIs. */
-export const API_BASE = "http://localhost:4000";
+/** Next.js app origin (API under /api). Must match Google OAuth authorized origins / redirect URIs. */
+export const API_BASE = "http://localhost:3000";
 
 export type AuthUser = {
   id: string;
@@ -32,10 +32,10 @@ async function readErrorMessage(res: Response): Promise<string> {
 }
 
 /**
- * Extension OAuth path (backend design):
- * 1) GET /api/auth/google/url?redirect_uri=<chrome.identity redirect> — returns Google authorize URL + signed state
- * 2) chrome.identity.launchWebAuthFlow — user signs in; Google redirects to extension URL with ?code&state
- * 3) POST /api/auth/google/exchange — backend swaps code for tokens, upserts user, returns app JWT
+ * Extension OAuth:
+ * 1) GET /api/auth/google/url?redirect_uri=<chrome.identity redirect> — Google authorize URL + signed state
+ * 2) chrome.identity.launchWebAuthFlow — Google redirects to extension URL with ?code&state
+ * 3) POST /api/auth/google/exchange — exchange code for app JWT + user
  */
 export async function runExtensionGoogleOAuth(): Promise<{
   token: string;
@@ -56,7 +56,7 @@ export async function runExtensionGoogleOAuth(): Promise<{
     throw new Error(urlBody.error);
   }
   if (!urlBody.url || typeof urlBody.url !== "string") {
-    throw new Error("Server did not return a Google sign-in URL. Is the backend running?");
+    throw new Error("Server did not return a Google sign-in URL. Is the Next.js app running?");
   }
 
   const googleAuthUrl = urlBody.url;

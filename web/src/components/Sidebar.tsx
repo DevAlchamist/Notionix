@@ -1,17 +1,15 @@
 "use client";
 
+import { clientApiUrl } from "@/lib/apiBase";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 export function Sidebar() {
   const pathname = usePathname();
 
   async function signOut() {
     try {
-      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+      await fetch(clientApiUrl("/api/auth/logout"), {
         method: "POST",
         credentials: "include",
       });
@@ -28,7 +26,8 @@ export function Sidebar() {
   const isCapture = pathname === "/dashboard/capture";
 
   return (
-    <aside className="fixed left-0 top-0 flex flex-col h-screen w-64 border-r border-slate-200 bg-[#FCFCFD] px-4 py-6">
+    <>
+    <aside className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r border-slate-200 bg-[#FCFCFD] px-4 py-6 md:flex">
       <div className="mb-10 pl-2">
         <h1 className="text-xl font-bold tracking-tight text-notionix-primary mb-1">
           Notionix
@@ -141,5 +140,42 @@ export function Sidebar() {
         </button>
       </nav>
     </aside>
+    <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-2 py-2 backdrop-blur md:hidden">
+      <div className="mx-auto grid max-w-md grid-cols-4 gap-1">
+        <Link
+          href="/dashboard"
+          className={`flex flex-col items-center justify-center rounded-lg px-1 py-2 text-[11px] font-semibold ${
+            isSummaries ? "bg-indigo-50 text-notionix-primary" : "text-slate-500"
+          }`}
+        >
+          All
+        </Link>
+        <Link
+          href="/dashboard/workspaces"
+          className={`flex flex-col items-center justify-center rounded-lg px-1 py-2 text-[11px] font-semibold ${
+            isWorkspaces ? "bg-indigo-50 text-notionix-primary" : "text-slate-500"
+          }`}
+        >
+          Spaces
+        </Link>
+        <Link
+          href="/dashboard/social"
+          className={`flex flex-col items-center justify-center rounded-lg px-1 py-2 text-[11px] font-semibold ${
+            isSocial ? "bg-indigo-50 text-notionix-primary" : "text-slate-500"
+          }`}
+        >
+          Social
+        </Link>
+        <Link
+          href="/dashboard/capture"
+          className={`flex flex-col items-center justify-center rounded-lg px-1 py-2 text-[11px] font-semibold ${
+            isCapture ? "bg-indigo-50 text-notionix-primary" : "text-slate-500"
+          }`}
+        >
+          Capture
+        </Link>
+      </div>
+    </nav>
+    </>
   );
 }

@@ -49,11 +49,24 @@ export function getInputElement(): HTMLTextAreaElement | HTMLDivElement | null {
     "div[contenteditable='true']",
   ];
 
+  const candidates: Array<HTMLTextAreaElement | HTMLDivElement> = [];
   for (const sel of selectors) {
-    const el = document.querySelector(sel);
-    if (el instanceof HTMLTextAreaElement) return el;
-    if (el instanceof HTMLDivElement) return el;
+    const list = document.querySelectorAll(sel);
+    for (const el of Array.from(list)) {
+      if (el instanceof HTMLTextAreaElement || el instanceof HTMLDivElement) {
+        if (isElementVisible(el)) candidates.push(el);
+      }
+    }
   }
+  if (!candidates.length) return null;
+
+  const active = document.activeElement;
+  if (active instanceof HTMLElement) {
+    for (const c of candidates) {
+      if (c === active || c.contains(active)) return c;
+    }
+  }
+  return candidates[candidates.length - 1] ?? null;
 
   return null;
 }
@@ -99,6 +112,55 @@ function findSendControlNearInput(composerInput: HTMLElement): HTMLElement | nul
   return null;
 }
 
+function isElementVisible(el: HTMLElement): boolean {
+  if (!el.isConnected) return false;
+  if (el.getAttribute("aria-hidden") === "true") return false;
+  const style = window.getComputedStyle(el);
+  if (style.display === "none" || style.visibility === "hidden") return false;
+  if (el.offsetParent === null && style.position !== "fixed") return false;
+  return true;
+}
+
+function getComposerRootFromInput(input: HTMLElement): HTMLElement {
+  let walk: HTMLElement | null = input;
+  for (let d = 0; d < 10 && walk; d++) {
+    const role = walk.getAttribute("role");
+    if (
+      walk.tagName === "FORM" ||
+      role === "form" ||
+      walk.hasAttribute("data-testid") ||
+      walk.getAttribute("aria-label")?.toLowerCase().includes("message")
+    ) {
+      return walk;
+    }
+    walk = walk.parentElement;
+  }
+  return input.parentElement ?? input;
+}
+
+function findSendControlInRoot(root: HTMLElement): HTMLElement | null {
+  const selectors = [
+    "#composer-submit-button",
+    "[data-testid='composer-submit-button']",
+    "button[data-testid='send-button']",
+    "[data-testid='send-button']",
+    "button[aria-label='Send prompt']",
+    "button[aria-label='Send message']",
+    "button[aria-label*='Send']",
+    "button[aria-label*='send']",
+    "div[role='button'][aria-label*='Send']",
+    "div[role='button'][aria-label*='send']",
+    "button[type='submit']",
+  ];
+  for (const sel of selectors) {
+    const nodes = root.querySelectorAll<HTMLElement>(sel);
+    for (const node of Array.from(nodes)) {
+      if (isElementVisible(node)) return node;
+    }
+  }
+  return null;
+}
+
 export function getSendControl(composerInput: HTMLElement | null): HTMLElement | null {
   const globalSelectors = [
     "#composer-submit-button",
@@ -114,18 +176,33 @@ export function getSendControl(composerInput: HTMLElement | null): HTMLElement |
     "button[type='submit']",
   ];
 
-  // Prefer the control in the same composer as the input (multiple / hidden UIs can confuse globals).
+  // Prefer the control in the same active composer.
   if (composerInput) {
-    const near = findSendControlNearInput(composerInput);
+    const composerRoot = getComposerRootFromInput(composerInput);
+    const near =
+      findSendControlInRoot(composerRoot) ??
+      findSendControlNearInput(composerInput);
     if (near) return near;
   }
 
   for (const sel of globalSelectors) {
-    const el = document.querySelector(sel);
-    if (el instanceof HTMLElement) return el;
+    const all = document.querySelectorAll<HTMLElement>(sel);
+    for (const el of Array.from(all)) {
+      if (isElementVisible(el)) return el;
+    }
   }
 
   return null;
+}
+
+function getScopedSendControlForMount(): HTMLElement | null {
+  const input = getInputElement();
+  if (!input) return null;
+  const composerRoot = getComposerRootFromInput(input);
+  return (
+    findSendControlInRoot(composerRoot) ??
+    findSendControlNearInput(input)
+  );
 }
 
 /** Enter / Ctrl|Cmd+Enter fallbacks when click fails or submit stays disabled (multiline composer). */
@@ -153,7 +230,7 @@ function trySubmitViaKeyboard(composerInput: HTMLTextAreaElement | HTMLDivElemen
   );
 }
 
-export async function insertPromptAndSend() {
+export async function insertPromptAndSend(autoSave = false) {
   const input = await waitFor(getInputElement, 10000);
 
   if (!input) {
@@ -213,7 +290,33 @@ export async function insertPromptAndSend() {
   watchForSummaryResponse(
     beforeAssistantCount,
     beforeAssistantLastText,
+    autoSave,
   );
+}
+
+async function insertContinuePromptIntoInput(prompt: string): Promise<void> {
+  const trimmed = String(prompt ?? "").trim();
+  if (!trimmed) return;
+
+  const input = await waitFor(getInputElement, 15000);
+  if (!input) throw new Error("Unable to find chat input.");
+
+  if (input instanceof HTMLTextAreaElement) {
+    const existing = String(input.value ?? "");
+    const next = existing.trim().length ? `${existing}\n\n${trimmed}` : trimmed;
+    input.focus();
+    input.value = next;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return;
+  }
+
+  const existing = String(input.textContent ?? "");
+  const next = existing.trim().length ? `${existing}\n\n${trimmed}` : trimmed;
+  input.focus();
+  input.innerText = next;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 export function extractLatestAssistantMessage(): string | null {
@@ -228,6 +331,7 @@ export function extractLatestAssistantMessage(): string | null {
 export function watchForSummaryResponse(
   beforeAssistantCount: number,
   beforeAssistantLastText: string | null,
+  autoSave: boolean,
   timeoutMs = 60000,
 ) {
   const assistantSelector = "[data-message-author-role='assistant']";
@@ -258,6 +362,7 @@ export function watchForSummaryResponse(
       summaryText: latestText,
       url: window.location.href,
       createdAt: new Date().toISOString(),
+      autoSave,
     });
   };
 
@@ -315,12 +420,170 @@ export function watchForSummaryResponse(
   });
 }
 
+function showCaptureIndicator(message: string, tone: "success" | "error" = "success") {
+  const id = "ai-remember-capture-indicator";
+  const existing = document.getElementById(id);
+  if (existing) existing.remove();
+
+  const node = document.createElement("div");
+  node.id = id;
+  node.textContent = message;
+  node.style.position = "fixed";
+  node.style.top = "14px";
+  node.style.right = "14px";
+  node.style.zIndex = "2147483647";
+  node.style.padding = "8px 12px";
+  node.style.borderRadius = "10px";
+  node.style.fontSize = "12px";
+  node.style.fontWeight = "600";
+  node.style.boxShadow = "0 8px 24px rgba(0,0,0,0.25)";
+  node.style.color = "#fff";
+  node.style.background = tone === "success" ? "#127a3f" : "#8a1c1c";
+  node.style.maxWidth = "300px";
+  node.style.whiteSpace = "nowrap";
+  node.style.overflow = "hidden";
+  node.style.textOverflow = "ellipsis";
+  document.documentElement.appendChild(node);
+
+  window.setTimeout(() => node.remove(), 3200);
+}
+
+function styleFloatingCaptureButton(captureBtn: HTMLButtonElement) {
+  captureBtn.style.setProperty("all", "initial", "important");
+  captureBtn.style.setProperty("position", "fixed", "important");
+  captureBtn.style.setProperty("right", "18px", "important");
+  captureBtn.style.setProperty("bottom", "18px", "important");
+  captureBtn.style.setProperty("z-index", "2147483647", "important");
+  captureBtn.style.setProperty("min-width", "84px", "important");
+  captureBtn.style.setProperty("height", "40px", "important");
+  captureBtn.style.setProperty("padding", "0 14px", "important");
+  captureBtn.style.setProperty("border-radius", "9999px", "important");
+  captureBtn.style.setProperty("border", "1px solid rgba(255,255,255,0.2)", "important");
+  captureBtn.style.setProperty("background", "#111827", "important");
+  captureBtn.style.setProperty("color", "#f9fafb", "important");
+  captureBtn.style.setProperty("box-shadow", "0 10px 28px rgba(0,0,0,0.35)", "important");
+  captureBtn.style.setProperty("font-size", "13px", "important");
+  captureBtn.style.setProperty("font-weight", "600", "important");
+  captureBtn.style.setProperty("line-height", "1", "important");
+  captureBtn.style.setProperty("font-family", "Inter, system-ui, -apple-system, Segoe UI, sans-serif", "important");
+  captureBtn.style.setProperty("display", "inline-flex", "important");
+  captureBtn.style.setProperty("align-items", "center", "important");
+  captureBtn.style.setProperty("justify-content", "center", "important");
+  captureBtn.style.setProperty("cursor", "pointer", "important");
+  captureBtn.style.setProperty("pointer-events", "auto", "important");
+}
+
+function createCaptureButton(): HTMLButtonElement {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.dataset.aiRememberCapture = "true";
+  btn.textContent = "Capture";
+  styleFloatingCaptureButton(btn);
+
+  btn.addEventListener("click", () => {
+    insertPromptAndSend(true).catch(() => {
+      chrome.runtime.sendMessage({
+        type: "SUMMARIZE_STATUS",
+        status: "error",
+        reason: "Could not start capture on this page.",
+      });
+      showCaptureIndicator("Capture failed to start", "error");
+    });
+  });
+  return btn;
+}
+
+function mountCaptureButton() {
+  const existing = document.querySelector<HTMLButtonElement>(
+    "button[data-ai-remember-capture='true']",
+  );
+  const button = existing ?? createCaptureButton();
+  styleFloatingCaptureButton(button);
+  if (!button.isConnected || button.parentElement !== document.documentElement) {
+    document.documentElement.appendChild(button);
+  }
+}
+
+function readContinuationPromptFromUrl(): string | null {
+  try {
+    const u = new URL(window.location.href);
+    const fromCustom = u.searchParams.get("air_continue");
+    const fromQ = u.searchParams.get("q");
+    const raw = fromCustom ?? fromQ;
+    if (!raw) return null;
+    const prompt = raw.trim();
+    return prompt.length > 0 ? prompt : null;
+  } catch {
+    return null;
+  }
+}
+
+async function prefillContinuationPromptFromUrl(): Promise<void> {
+  const prompt = readContinuationPromptFromUrl();
+  if (!prompt) return;
+  const input = await waitFor(getInputElement, 15000);
+  if (!input) return;
+
+  if (input instanceof HTMLTextAreaElement) {
+    input.focus();
+    input.value = prompt;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+    return;
+  }
+
+  input.focus();
+  input.innerText = prompt;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
+function startCaptureButtonObserver() {
+  mountCaptureButton();
+  let scheduled = false;
+  const observer = new MutationObserver(() => {
+    if (scheduled) return;
+    scheduled = true;
+    window.requestAnimationFrame(() => {
+      scheduled = false;
+      mountCaptureButton();
+    });
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+}
+
 chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
   if (message.type === "INJECT_SUMMARY_PROMPT") {
     sendResponse({ ok: true });
-    insertPromptAndSend();
+    insertPromptAndSend(Boolean(message?.autoSave));
+    return;
+  }
+  if (message.type === "INJECT_CONTINUE_PROMPT") {
+    void insertContinuePromptIntoInput(String(message?.prompt ?? ""))
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, reason: String(err?.message ?? err) }));
+    return true;
+  }
+  if (message.type === "PING_CAPTURE_READY") {
+    sendResponse({ ok: true });
+    return;
+  }
+  if (message.type === "SHOW_CAPTURE_SAVED_INDICATOR") {
+    sendResponse({ ok: true });
+    showCaptureIndicator("Saved to Memory");
+    return;
+  }
+  if (message.type === "SHOW_CAPTURE_ERROR_INDICATOR") {
+    sendResponse({ ok: true });
+    const reason =
+      typeof message?.reason === "string" && message.reason.trim().length
+        ? message.reason.trim()
+        : "Capture could not be saved.";
+    showCaptureIndicator(reason, "error");
     return;
   }
   sendResponse({ ok: false });
 });
+
+startCaptureButtonObserver();
+void prefillContinuationPromptFromUrl();
 

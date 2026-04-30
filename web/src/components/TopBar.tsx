@@ -1,14 +1,12 @@
 "use client";
 
 import { NotificationsBell } from "@/components/NotificationsBell";
+import { clientApiUrl } from "@/lib/apiBase";
 import { useEffect, useRef, useState } from "react";
 
 interface TopBarProps {
   user: any;
 }
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 
 export function TopBar({ user }: TopBarProps) {
   const [profileOpen, setProfileOpen] = useState(false);
@@ -25,7 +23,7 @@ export function TopBar({ user }: TopBarProps) {
 
   async function logout() {
     try {
-      await fetch(`${API_BASE_URL}/api/auth/logout`, {
+      await fetch(clientApiUrl("/api/auth/logout"), {
         method: "POST",
         credentials: "include",
       });
@@ -35,11 +33,11 @@ export function TopBar({ user }: TopBarProps) {
   }
 
   return (
-    <header className="sticky top-0 z-10 flex h-[72px] items-center justify-between border-b border-slate-100 bg-[#FCFCFD]/80 px-8 backdrop-blur-md">
+    <header className="sticky top-0 z-10 flex h-[72px] items-center justify-between gap-3 border-b border-slate-100 bg-[#FCFCFD]/80 px-3 backdrop-blur-md sm:px-5 md:px-8">
       <form
         action="/dashboard"
         method="get"
-        className="flex w-full max-w-2xl items-center rounded-2xl bg-[#f1f3f7] px-4 py-2.5 transition-colors focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 focus-within:shadow-sm"
+        className="hidden w-full max-w-2xl items-center rounded-2xl bg-[#f1f3f7] px-4 py-2.5 transition-colors focus-within:bg-white focus-within:ring-2 focus-within:ring-indigo-100 focus-within:shadow-sm sm:flex"
       >
         <svg fill="none" stroke="currentColor" strokeWidth="2.5" viewBox="0 0 24 24" className="mr-3 h-[18px] w-[18px] text-slate-400">
           <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-4.35-4.35M19 11a8 8 0 11-16 0 8 8 0 0116 0z" />
@@ -51,10 +49,10 @@ export function TopBar({ user }: TopBarProps) {
           className="w-full bg-transparent text-[14px] text-slate-800 outline-none placeholder:text-slate-400 placeholder:font-medium"
         />
       </form>
-      <div className="flex items-center gap-5">
-        <div className="flex items-center gap-3 pr-2 border-r border-slate-200">
+      <div className="flex items-center gap-2 sm:gap-4 md:gap-5">
+        <div className="flex items-center gap-1 border-r border-slate-200 pr-2 sm:gap-3">
           <NotificationsBell />
-          <button className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors">
+          <button className="hidden h-9 w-9 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 sm:flex">
             <svg fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" viewBox="0 0 24 24" className="h-5 w-5">
                <path d="M12 8v4l3 3M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"/>
             </svg>
@@ -62,7 +60,7 @@ export function TopBar({ user }: TopBarProps) {
         </div>
 
         {user ? (
-          <div className="flex items-center gap-3 pl-2" ref={profileRef}>
+          <div className="flex items-center gap-2 pl-1 sm:gap-3 sm:pl-2" ref={profileRef}>
             <div className="text-right leading-tight hidden sm:block">
               <p className="text-[13px] font-bold text-slate-900">{user.name || "User"}</p>
               <p className="text-[11px] font-medium text-slate-500">Pro Plan</p>
@@ -102,7 +100,7 @@ export function TopBar({ user }: TopBarProps) {
         ) : (
           <div className="flex items-center gap-4 pl-2">
             <a
-              href="http://localhost:4000/api/auth/google"
+              href={clientApiUrl("/api/auth/google")}
               className="inline-flex items-center justify-center rounded-full bg-notionix-primary px-5 py-2 text-[13px] font-semibold text-white shadow-sm shadow-indigo-600/20 transition hover:bg-opacity-90 active:scale-95"
             >
               Sign in with Google
