@@ -88,7 +88,7 @@ function contentScriptFileForUrl(url) {
         if (hostname === "gemini.google.com")
             return "dist/content-gemini.js";
         if (hostname === "www.bing.com" || hostname === "copilot.microsoft.com")
-            return "dist/content-chatgpt.js";
+            return "dist/content-bing.js";
         if (hostname === "grok.com" || hostname === "x.com")
             return "dist/content-chatgpt.js";
         return null;

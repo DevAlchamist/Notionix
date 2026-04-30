@@ -14,6 +14,7 @@ await esbuild.build({
     "content-chatgpt": "src/content-chatgpt.ts",
     "content-claude": "src/content-claude.ts",
     "content-gemini": "src/content-gemini.ts",
+    "content-bing": "src/content-bing.ts",
   },
   outdir: "dist",
   format: "iife",

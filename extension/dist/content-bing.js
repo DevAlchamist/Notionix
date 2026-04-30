@@ -217,7 +217,7 @@
     });
   }
 
-  // src/content-claude.ts
+  // src/content-bing.ts
   var SUMMARY_PROMPT = `Summarize the conversation above.
 
 Output format (exact labels):
@@ -241,8 +241,18 @@ Important:
     }
     return getter();
   }
+  function isElementVisible(el) {
+    if (!el.isConnected) return false;
+    if (el.getAttribute("aria-hidden") === "true") return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (el.offsetParent === null && style.position !== "fixed") return false;
+    return true;
+  }
   function getInputElement() {
     const selectors = [
+      "textarea[aria-label*='Ask']",
+      "textarea[placeholder*='Ask']",
       "textarea[aria-label*='Message']",
       "textarea[placeholder*='Message']",
       "textarea[placeholder*='message']",
@@ -274,51 +284,31 @@ Important:
     const selectors = [
       "button[type='submit']",
       "button[aria-label*='Send']",
-      "button[aria-label='Send message']"
+      "button[aria-label*='send']",
+      "button[aria-label*='Submit']",
+      "button[aria-label*='submit']",
+      "[role='button'][aria-label*='Send']",
+      "[role='button'][aria-label*='send']"
     ];
     for (const sel of selectors) {
       const nodes = document.querySelectorAll(sel);
       for (const node of Array.from(nodes)) {
-        if (isElementVisible(node)) return node;
+        if (node instanceof HTMLButtonElement && isElementVisible(node)) return node;
       }
-    }
-    return null;
-  }
-  function isElementVisible(el) {
-    if (!el.isConnected) return false;
-    if (el.getAttribute("aria-hidden") === "true") return false;
-    const style = window.getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden") return false;
-    if (el.offsetParent === null && style.position !== "fixed") return false;
-    return true;
-  }
-  function getSendButtonForInput(input) {
-    if (!input) return null;
-    let walk = input;
-    for (let depth = 0; depth < 12 && walk; depth++) {
-      const local = walk.querySelectorAll(
-        "button[type='submit'],button[aria-label*='Send'],button[aria-label='Send message']"
-      );
-      for (const btn of Array.from(local)) {
-        if (isElementVisible(btn) && walk.contains(btn)) return btn;
-      }
-      walk = walk.parentElement;
     }
     return null;
   }
   async function insertPromptAndSend(autoSave = false) {
-    const input = await waitFor(getInputElement, 1e4);
+    const input = await waitFor(getInputElement, 15e3);
     const sendBtn = await waitFor(() => {
-      const scoped = getSendButtonForInput(input);
-      if (scoped) return scoped;
-      const global = getSendButton();
-      return global && isElementVisible(global) ? global : null;
-    }, 1e4);
+      const b = getSendButton();
+      return b && isElementVisible(b) ? b : null;
+    }, 15e3);
     if (!input) {
       chrome.runtime.sendMessage({
         type: "SUMMARIZE_STATUS",
         status: "error",
-        reason: "Unable to find chat input in Claude."
+        reason: "Unable to find chat input in Bing/Copilot."
       });
       return;
     }
@@ -326,14 +316,10 @@ Important:
       chrome.runtime.sendMessage({
         type: "SUMMARIZE_STATUS",
         status: "error",
-        reason: "Unable to find send button in Claude (composer not ready)."
+        reason: "Unable to find send button in Bing/Copilot (composer not ready)."
       });
       return;
     }
-    const assistantSelector = "[data-testid='assistant-message'], [data-role='assistant']";
-    const beforeAssistantCount = document.querySelectorAll(
-      assistantSelector
-    ).length;
     const beforeAssistantLastText = extractLatestAssistantMessage();
     if (input instanceof HTMLTextAreaElement) {
       input.focus();
@@ -344,114 +330,79 @@ Important:
       input.focus();
       input.textContent = SUMMARY_PROMPT;
       input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
     }
     await delay(150);
-    const enabledBtn = await waitFor(() => {
-      const scoped = getSendButtonForInput(input);
-      const btn = scoped ?? getSendButton();
-      return btn && !btn.disabled && isElementVisible(btn) ? btn : null;
-    }, 5e3);
     try {
-      (enabledBtn ?? sendBtn).click();
+      sendBtn.click();
     } catch {
     }
     chrome.runtime.sendMessage({
       type: "SUMMARIZE_STATUS",
       status: "waiting_ai"
     });
-    watchForSummaryResponse(beforeAssistantCount, beforeAssistantLastText, autoSave);
-  }
-  function readContinuationPromptFromUrl() {
-    try {
-      const u = new URL(window.location.href);
-      const raw = u.searchParams.get("air_continue");
-      if (!raw) return null;
-      const prompt = raw.trim();
-      return prompt.length > 0 ? prompt : null;
-    } catch {
-      return null;
-    }
-  }
-  async function prefillContinuationPromptFromUrl() {
-    const prompt = readContinuationPromptFromUrl();
-    if (!prompt) return;
-    const input = await waitFor(getInputElement, 15e3);
-    if (!input) return;
-    if (input instanceof HTMLTextAreaElement) {
-      input.focus();
-      input.value = prompt;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      return;
-    }
-    input.focus();
-    input.innerText = prompt;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  }
-  async function insertContinuePromptIntoInput(prompt) {
-    const trimmed = String(prompt ?? "").trim();
-    if (!trimmed) return;
-    const input = await waitFor(getInputElement, 15e3);
-    if (!input) throw new Error("Unable to find chat input.");
-    if (input instanceof HTMLTextAreaElement) {
-      const existing2 = String(input.value ?? "");
-      input.focus();
-      input.value = existing2.trim().length ? `${existing2}
-
-${trimmed}` : trimmed;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      return;
-    }
-    const existing = String(input.textContent ?? "");
-    input.focus();
-    input.innerText = existing.trim().length ? `${existing}
-
-${trimmed}` : trimmed;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
+    watchForSummaryResponse(beforeAssistantLastText, autoSave);
   }
   function extractLatestAssistantMessage() {
-    const messageBlocks = document.querySelectorAll("[data-testid='assistant-message'], [data-role='assistant']");
-    const last = messageBlocks[messageBlocks.length - 1];
-    if (!last) return null;
-    return last.innerText.trim();
+    const selectors = [
+      // Copilot / Bing variants (best-effort; UI changes often)
+      "cib-message-group cib-message",
+      "cib-message",
+      "[data-testid*='assistant']",
+      "[data-role='assistant']",
+      "[data-author='assistant']",
+      "[data-author='bot']"
+    ];
+    for (const sel of selectors) {
+      const nodes = document.querySelectorAll(sel);
+      const last = nodes[nodes.length - 1];
+      const txt = last?.innerText?.trim();
+      if (txt) return txt;
+    }
+    return null;
   }
-  function watchForSummaryResponse(beforeAssistantCount, beforeAssistantLastText, autoSave, timeoutMs = 6e4) {
+  function watchForSummaryResponse(beforeAssistantLastText, autoSave, timeoutMs = 7e4) {
     const container = document.body;
-    const observer = new MutationObserver(() => {
-      const messageBlocks = document.querySelectorAll(
-        "[data-testid='assistant-message'], [data-role='assistant']"
-      );
-      const currentCount = messageBlocks.length;
-      const last = messageBlocks[messageBlocks.length - 1];
-      if (!last) return;
-      const text = last.innerText.trim();
-      if (!text) return;
-      if (currentCount < beforeAssistantCount) return;
-      if (currentCount === beforeAssistantCount) {
-        if (beforeAssistantLastText && text === beforeAssistantLastText) return;
-      }
-      if (currentCount > beforeAssistantCount && beforeAssistantLastText && text === beforeAssistantLastText) {
-        return;
-      }
+    const quietPeriodMs = 3e3;
+    let timeoutId;
+    let quietTimerId;
+    let lastSeenText = null;
+    const accept = () => {
+      const latestText = extractLatestAssistantMessage() ?? "";
+      if (!latestText) return;
+      if (lastSeenText && latestText !== lastSeenText) return;
       observer.disconnect();
       if (timeoutId) window.clearTimeout(timeoutId);
       chrome.runtime.sendMessage({
         type: "SUMMARY_COMPLETE",
-        platform: "Claude",
-        summaryText: text,
+        platform: "Bing",
+        summaryText: latestText,
         url: window.location.href,
         createdAt: (/* @__PURE__ */ new Date()).toISOString(),
         autoSave
       });
+    };
+    const observer = new MutationObserver(() => {
+      const text = extractLatestAssistantMessage();
+      if (!text) return;
+      if (beforeAssistantLastText && text === beforeAssistantLastText) return;
+      if (!lastSeenText) {
+        lastSeenText = text;
+      } else if (text !== lastSeenText) {
+        lastSeenText = text;
+      } else {
+        return;
+      }
+      if (quietTimerId) window.clearTimeout(quietTimerId);
+      quietTimerId = window.setTimeout(() => accept(), quietPeriodMs);
     });
-    let timeoutId = window.setTimeout(() => {
+    timeoutId = window.setTimeout(() => {
       observer.disconnect();
+      if (quietTimerId) window.clearTimeout(quietTimerId);
       chrome.runtime.sendMessage({
         type: "SUMMARIZE_STATUS",
         status: "error",
-        reason: "Timed out waiting for Claude to finish generating the summary."
+        reason: "Timed out waiting for Bing/Copilot to finish generating the summary (waiting for stable output)."
       });
     }, timeoutMs);
     observer.observe(container, {
@@ -477,6 +428,10 @@ ${trimmed}` : trimmed;
     node.style.boxShadow = "0 8px 24px rgba(0,0,0,0.25)";
     node.style.color = "#fff";
     node.style.background = tone === "success" ? "#127a3f" : "#8a1c1c";
+    node.style.maxWidth = "320px";
+    node.style.whiteSpace = "nowrap";
+    node.style.overflow = "hidden";
+    node.style.textOverflow = "ellipsis";
     document.documentElement.appendChild(node);
     window.setTimeout(() => node.remove(), 3200);
   }
@@ -485,6 +440,11 @@ ${trimmed}` : trimmed;
       buttonText: "Capture",
       onClick: () => {
         insertPromptAndSend(true).catch(() => {
+          chrome.runtime.sendMessage({
+            type: "SUMMARIZE_STATUS",
+            status: "error",
+            reason: "Could not start capture on this page."
+          });
           showCaptureIndicator("Capture failed to start", "error");
         });
       }
@@ -495,14 +455,6 @@ ${trimmed}` : trimmed;
       sendResponse({ ok: true });
       insertPromptAndSend(Boolean(message?.autoSave));
       return;
-    }
-    if (message.type === "INJECT_CONTINUE_PROMPT") {
-      void insertContinuePromptIntoInput(String(message?.prompt ?? "")).then(() => {
-        sendResponse({ ok: true });
-      }).catch((err) => {
-        sendResponse({ ok: false, reason: String(err?.message ?? err) });
-      });
-      return true;
     }
     if (message.type === "PING_CAPTURE_READY") {
       sendResponse({ ok: true });
@@ -522,6 +474,5 @@ ${trimmed}` : trimmed;
     sendResponse({ ok: false });
   });
   startCaptureButtonObserver();
-  void prefillContinuationPromptFromUrl();
 })();
-//# sourceMappingURL=content-claude.js.map
+//# sourceMappingURL=content-bing.js.map

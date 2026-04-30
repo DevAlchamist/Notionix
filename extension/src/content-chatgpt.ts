@@ -1,3 +1,5 @@
+import { startFloatingCaptureButtonObserver } from "./captureButton.js";
+
 export const SUMMARY_PROMPT = `Summarize the conversation above.
 
 Output format (exact labels):
@@ -448,61 +450,6 @@ function showCaptureIndicator(message: string, tone: "success" | "error" = "succ
   window.setTimeout(() => node.remove(), 3200);
 }
 
-function styleFloatingCaptureButton(captureBtn: HTMLButtonElement) {
-  captureBtn.style.setProperty("all", "initial", "important");
-  captureBtn.style.setProperty("position", "fixed", "important");
-  captureBtn.style.setProperty("right", "18px", "important");
-  captureBtn.style.setProperty("bottom", "18px", "important");
-  captureBtn.style.setProperty("z-index", "2147483647", "important");
-  captureBtn.style.setProperty("min-width", "84px", "important");
-  captureBtn.style.setProperty("height", "40px", "important");
-  captureBtn.style.setProperty("padding", "0 14px", "important");
-  captureBtn.style.setProperty("border-radius", "9999px", "important");
-  captureBtn.style.setProperty("border", "1px solid rgba(255,255,255,0.2)", "important");
-  captureBtn.style.setProperty("background", "#111827", "important");
-  captureBtn.style.setProperty("color", "#f9fafb", "important");
-  captureBtn.style.setProperty("box-shadow", "0 10px 28px rgba(0,0,0,0.35)", "important");
-  captureBtn.style.setProperty("font-size", "13px", "important");
-  captureBtn.style.setProperty("font-weight", "600", "important");
-  captureBtn.style.setProperty("line-height", "1", "important");
-  captureBtn.style.setProperty("font-family", "Inter, system-ui, -apple-system, Segoe UI, sans-serif", "important");
-  captureBtn.style.setProperty("display", "inline-flex", "important");
-  captureBtn.style.setProperty("align-items", "center", "important");
-  captureBtn.style.setProperty("justify-content", "center", "important");
-  captureBtn.style.setProperty("cursor", "pointer", "important");
-  captureBtn.style.setProperty("pointer-events", "auto", "important");
-}
-
-function createCaptureButton(): HTMLButtonElement {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.dataset.aiRememberCapture = "true";
-  btn.textContent = "Capture";
-  styleFloatingCaptureButton(btn);
-
-  btn.addEventListener("click", () => {
-    insertPromptAndSend(true).catch(() => {
-      chrome.runtime.sendMessage({
-        type: "SUMMARIZE_STATUS",
-        status: "error",
-        reason: "Could not start capture on this page.",
-      });
-      showCaptureIndicator("Capture failed to start", "error");
-    });
-  });
-  return btn;
-}
-
-function mountCaptureButton() {
-  const existing = document.querySelector<HTMLButtonElement>(
-    "button[data-ai-remember-capture='true']",
-  );
-  const button = existing ?? createCaptureButton();
-  styleFloatingCaptureButton(button);
-  if (!button.isConnected || button.parentElement !== document.documentElement) {
-    document.documentElement.appendChild(button);
-  }
-}
 
 function readContinuationPromptFromUrl(): string | null {
   try {
@@ -538,17 +485,19 @@ async function prefillContinuationPromptFromUrl(): Promise<void> {
 }
 
 function startCaptureButtonObserver() {
-  mountCaptureButton();
-  let scheduled = false;
-  const observer = new MutationObserver(() => {
-    if (scheduled) return;
-    scheduled = true;
-    window.requestAnimationFrame(() => {
-      scheduled = false;
-      mountCaptureButton();
-    });
+  startFloatingCaptureButtonObserver({
+    buttonText: "Capture",
+    onClick: () => {
+      insertPromptAndSend(true).catch(() => {
+        chrome.runtime.sendMessage({
+          type: "SUMMARIZE_STATUS",
+          status: "error",
+          reason: "Could not start capture on this page.",
+        });
+        showCaptureIndicator("Capture failed to start", "error");
+      });
+    },
   });
-  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {

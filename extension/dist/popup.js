@@ -2,11 +2,11 @@ import { API_BASE } from "./googleAuth.js";
 import { deriveSummaryTitle, extractTitleAndSummary } from "./summaryderive.js";
 let allRecentSummaries = [];
 let currentSummarySearch = "";
-let insertSummaryHandler = null;
 let qcTagSuggestTimer = null;
 let qcTagSuggestAbort = null;
 let qcTagSuggestItems = [];
 let qcTagSuggestActiveIndex = -1;
+let insertSummaryHandler = null;
 function setStatus(text) {
     const signedInStatus = document.getElementById("status-text");
     const loginStatus = document.getElementById("login-status");
@@ -49,8 +49,7 @@ function renderSummaries(list) {
         insertBtn.setAttribute("aria-label", "Insert into current AI chat");
         insertBtn.addEventListener("click", (e) => {
             e.stopPropagation();
-            if (insertSummaryHandler)
-                insertSummaryHandler(item.id);
+            void insertSummaryHandler?.(item.id);
         });
         insertBtn.innerHTML = `
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -61,7 +60,7 @@ function renderSummaries(list) {
         const badge = document.createElement("span");
         badge.className = "badge";
         badge.textContent = item.platform;
-        // `.summary-meta` uses `flex-direction: row-reverse`, so append order matters.
+        // Note: `.summary-meta` uses `flex-direction: row-reverse`, so append order is important.
         meta.appendChild(insertBtn);
         meta.appendChild(dateEl);
         meta.appendChild(badge);
@@ -592,11 +591,11 @@ function renderUser(user) {
 async function init() {
     const loginBtn = document.getElementById("login-btn");
     const logoutBtn = document.getElementById("logout-btn");
-    const captureButtons = Array.from(document.querySelectorAll(".agent-capture-btn"));
+    const captureBtn = document.getElementById("agent-capture-btn");
     let { token: authToken, user: cachedUser } = await getStoredAuth();
     function updateAuthUI() {
-        for (const btn of captureButtons)
-            btn.disabled = !authToken;
+        if (captureBtn)
+            captureBtn.disabled = !authToken;
     }
     updateAuthUI();
     function buildContinuePrompt(title, summaryText) {
@@ -623,7 +622,10 @@ async function init() {
             return;
         }
         setStatus("Inserting into active AI…");
-        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const [activeTab] = await chrome.tabs.query({
+            active: true,
+            currentWindow: true,
+        });
         const tabId = activeTab?.id;
         const tabUrl = activeTab?.url;
         if (!tabId || !tabUrl) {
@@ -646,43 +648,51 @@ async function init() {
         const summaryText = String(summary?.summaryText ?? "");
         const prompt = buildContinuePrompt(title, summaryText);
         const payload = { type: "INJECT_CONTINUE_PROMPT", prompt };
-        chrome.tabs.sendMessage(tabId, payload, async (response) => {
-            const err = chrome.runtime.lastError;
-            if (err) {
-                await ensureContentScriptForTab(tabId, tabUrl);
-                window.setTimeout(() => {
-                    chrome.tabs.sendMessage(tabId, payload, (response2) => {
-                        const err2 = chrome.runtime.lastError;
-                        if (err2) {
-                            setStatus(`Insert failed: ${err2.message}`);
-                            return;
-                        }
-                        const ok2 = Boolean(response2 && response2.ok);
-                        const reason2 = (response2 && (response2.reason || response2.error)) || "Insert failed.";
-                    if (ok2) {
-                        setStatus("Inserted. Continue in the input box.");
-                    }
-                    else {
-                        navigator.clipboard
-                            .writeText(prompt)
-                            .then(() => setStatus(`Could not insert automatically. Prompt copied - paste into the input box. (${String(reason2)})`))
-                            .catch(() => setStatus(`Could not insert automatically. (${String(reason2)})`));
-                    }
-                    });
-                }, 500);
-                return;
-            }
-            const ok = Boolean(response && response.ok);
-            const reason = (response && (response.reason || response.error)) || "Insert failed.";
-        if (ok) {
-            setStatus("Inserted. Continue in the input box.");
-        }
-        else {
-            navigator.clipboard
-                .writeText(prompt)
-                .then(() => setStatus(`Could not insert automatically. Prompt copied - paste into the input box. (${String(reason)})`))
-                .catch(() => setStatus(`Could not insert automatically. (${String(reason)})`));
-        }
+        await new Promise((resolve) => {
+            chrome.tabs.sendMessage(tabId, payload, async (response) => {
+                const err = chrome.runtime.lastError;
+                if (err) {
+                    // If the receiver isn't ready yet, inject and retry once.
+                    await ensureContentScriptForTab(tabId, tabUrl);
+                    window.setTimeout(() => {
+                        chrome.tabs.sendMessage(tabId, payload, (response2) => {
+                            const err2 = chrome.runtime.lastError;
+                            if (err2) {
+                                setStatus(`Insert failed: ${err2.message}`);
+                                resolve();
+                                return;
+                            }
+                            const ok = Boolean(response2?.ok);
+                            const reason = response2?.reason ||
+                                response2?.error ||
+                                "Insert failed.";
+                            if (ok) {
+                                setStatus("Inserted. Continue in the input box.");
+                                resolve();
+                                return;
+                            }
+                            void navigator.clipboard
+                                .writeText(prompt)
+                                .then(() => setStatus(`Could not insert automatically. Prompt copied - paste into the input box. (${String(reason)})`))
+                                .catch(() => setStatus(`Could not insert automatically. (${String(reason)})`));
+                            resolve();
+                        });
+                    }, 500);
+                    return;
+                }
+                const ok = Boolean(response?.ok);
+                const reason = response?.reason || response?.error || "Insert failed.";
+                if (ok) {
+                    setStatus("Inserted. Continue in the input box.");
+                    resolve();
+                    return;
+                }
+                void navigator.clipboard
+                    .writeText(prompt)
+                    .then(() => setStatus(`Could not insert automatically. Prompt copied - paste into the input box. (${String(reason)})`))
+                    .catch(() => setStatus(`Could not insert automatically. (${String(reason)})`));
+                resolve();
+            });
         });
     };
     if (authToken) {
@@ -825,7 +835,7 @@ async function init() {
         qcCloseWorkspaceMenu();
         qcHideTagSuggest();
     });
-    const startCapture = (requiredPlatform) => {
+    const startCapture = () => {
         if (!authToken) {
             setStatus("Please sign in first.");
             return;
@@ -837,12 +847,14 @@ async function init() {
                 return;
             }
             if (!isSupportedConversationUrl(tabUrl)) {
-                setStatus(`Open a ${requiredPlatform} tab to capture.`);
+                setStatus("Open a ChatGPT, Claude, or Gemini tab to capture.");
                 return;
             }
             const detectedPlatform = detectPlatformFromUrl(tabUrl);
-            if (detectedPlatform !== requiredPlatform) {
-                setStatus(`Active tab is ${detectedPlatform}. Open ${requiredPlatform} to capture.`);
+            if (detectedPlatform !== "ChatGPT" &&
+                detectedPlatform !== "Claude" &&
+                detectedPlatform !== "Gemini") {
+                setStatus("Open a ChatGPT, Claude, or Gemini tab to capture.");
                 return;
             }
             const tabId = tabs[0]?.id;
@@ -887,14 +899,9 @@ async function init() {
             });
         });
     };
-    for (const btn of captureButtons) {
-        btn.addEventListener("click", () => {
-            const selected = String(btn.dataset.agent ?? "");
-            if (selected === "ChatGPT" || selected === "Claude" || selected === "Gemini") {
-                startCapture(selected);
-            }
-        });
-    }
+    captureBtn?.addEventListener("click", () => {
+        startCapture();
+    });
     chrome.storage.onChanged.addListener((changes, areaName) => {
         if (areaName !== "sync" || !changes.authToken)
             return;

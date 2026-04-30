@@ -1,1 +1,1 @@
-{"version":3,"file":"background.d.ts","sourceRoot":"","sources":["../src/background.ts"],"names":[],"mappings":"AAOA,MAAM,MAAM,QAAQ,GAAG,SAAS,GAAG,QAAQ,GAAG,QAAQ,GAAG,SAAS,CAAC"}
+{"version":3,"file":"background.d.ts","sourceRoot":"","sources":["../src/background.ts"],"names":[],"mappings":"AAOA,MAAM,MAAM,QAAQ,GAAG,SAAS,GAAG,QAAQ,GAAG,QAAQ,GAAG,MAAM,GAAG,MAAM,GAAG,SAAS,CAAC"}

@@ -62,7 +62,15 @@
     {
       "matches": [
         "https://copilot.microsoft.com/*",
-        "https://www.bing.com/*",
+        "https://www.bing.com/*"
+      ],
+      "js": [
+        "dist/content-bing.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
         "https://grok.com/*",
         "https://x.com/i/grok*"
       ],
