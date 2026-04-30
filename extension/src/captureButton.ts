@@ -8,6 +8,51 @@ const CAPTURE_BTN_SELECTOR =
   `#${CAPTURE_BTN_ID}, button[data-ai-remember-capture='true']`;
 
 const onClickMap = new WeakMap<HTMLButtonElement, () => void | Promise<void>>();
+const DEFAULT_LOADING_TEXT = "Saving…";
+const LOADER_STYLE_ID = "ai-remember-capture-loader-style";
+
+function ensureLoaderStyles() {
+  if (document.getElementById(LOADER_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = LOADER_STYLE_ID;
+  style.textContent = `
+@keyframes aiRememberSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+`;
+  document.documentElement.appendChild(style);
+}
+
+function renderCaptureButtonContent(btn: HTMLButtonElement, text: string, loading: boolean) {
+  while (btn.firstChild) btn.removeChild(btn.firstChild);
+
+  const row = document.createElement("span");
+  row.style.display = "inline-flex";
+  row.style.alignItems = "center";
+  row.style.justifyContent = "center";
+  row.style.gap = "8px";
+  row.style.pointerEvents = "none";
+
+  if (loading) {
+    ensureLoaderStyles();
+    const spinner = document.createElement("span");
+    spinner.setAttribute("aria-hidden", "true");
+    spinner.style.width = "14px";
+    spinner.style.height = "14px";
+    spinner.style.border = "2px solid rgba(255,255,255,0.35)";
+    spinner.style.borderTopColor = "rgba(255,255,255,0.95)";
+    spinner.style.borderRadius = "9999px";
+    spinner.style.animation = "aiRememberSpin 0.8s linear infinite";
+    row.appendChild(spinner);
+  }
+
+  const label = document.createElement("span");
+  label.textContent = text;
+  row.appendChild(label);
+
+  btn.appendChild(row);
+}
 
 function getCaptureButtonPosStorageKey() {
   return `aiRemember:captureBtnPos:v1:${window.location.host}`;
@@ -95,6 +140,16 @@ function styleFloatingCaptureButton(captureBtn: HTMLButtonElement) {
   captureBtn.style.setProperty("justify-content", "center", "important");
   captureBtn.style.setProperty("cursor", "grab", "important");
   captureBtn.style.setProperty("pointer-events", "auto", "important");
+  captureBtn.style.setProperty("user-select", "none", "important");
+
+  // Re-apply loading state if present.
+  if (captureBtn.dataset.aiRememberCaptureLoading === "true") {
+    applyCaptureButtonLoadingState(
+      captureBtn,
+      true,
+      captureBtn.dataset.aiRememberCaptureLoadingText ?? undefined,
+    );
+  }
 
   // Default position unless user dragged it somewhere else.
   const posMode = captureBtn.dataset.aiRememberCapturePosMode;
@@ -199,6 +254,10 @@ function attachCaptureButtonClickHandler(btn: HTMLButtonElement) {
 
   btn.addEventListener("click", (e) => {
     // If drag suppressor fired, it will have already stopped propagation.
+    if (btn.disabled || btn.dataset.aiRememberCaptureLoading === "true") {
+      e.preventDefault();
+      return;
+    }
     const handler = onClickMap.get(btn);
     if (!handler) return;
     try {
@@ -211,6 +270,41 @@ function attachCaptureButtonClickHandler(btn: HTMLButtonElement) {
     }
     e.preventDefault();
   });
+}
+
+function applyCaptureButtonLoadingState(
+  btn: HTMLButtonElement,
+  loading: boolean,
+  loadingText?: string,
+) {
+  if (loading) {
+    if (!btn.dataset.aiRememberCaptureDefaultText) {
+      btn.dataset.aiRememberCaptureDefaultText = btn.textContent ?? "Capture";
+    }
+    btn.dataset.aiRememberCaptureLoading = "true";
+    btn.dataset.aiRememberCaptureLoadingText = loadingText ?? DEFAULT_LOADING_TEXT;
+    btn.disabled = true;
+    btn.setAttribute("aria-busy", "true");
+    btn.setAttribute("aria-disabled", "true");
+    btn.style.setProperty("cursor", "not-allowed", "important");
+    btn.style.setProperty("opacity", "0.78", "important");
+    renderCaptureButtonContent(
+      btn,
+      btn.dataset.aiRememberCaptureLoadingText ?? DEFAULT_LOADING_TEXT,
+      true,
+    );
+    return;
+  }
+
+  btn.dataset.aiRememberCaptureLoading = "false";
+  delete btn.dataset.aiRememberCaptureLoadingText;
+  btn.disabled = false;
+  btn.removeAttribute("aria-busy");
+  btn.removeAttribute("aria-disabled");
+  btn.style.setProperty("cursor", "grab", "important");
+  btn.style.setProperty("opacity", "1", "important");
+  const fallback = btn.dataset.aiRememberCaptureDefaultText ?? "Capture";
+  renderCaptureButtonContent(btn, fallback, false);
 }
 
 function getOrCreateCaptureButton(opts: CaptureButtonOptions): HTMLButtonElement {
@@ -229,7 +323,9 @@ function getOrCreateCaptureButton(opts: CaptureButtonOptions): HTMLButtonElement
   btn.id = CAPTURE_BTN_ID;
   btn.type = "button";
   btn.dataset.aiRememberCapture = "true";
-  btn.textContent = opts.buttonText ?? "Capture";
+  const label = opts.buttonText ?? "Capture";
+  btn.dataset.aiRememberCaptureDefaultText = label;
+  renderCaptureButtonContent(btn, label, false);
 
   styleFloatingCaptureButton(btn);
   enableCaptureButtonDrag(btn);
@@ -244,6 +340,15 @@ function getOrCreateCaptureButton(opts: CaptureButtonOptions): HTMLButtonElement
 
 export function mountFloatingCaptureButton(opts: CaptureButtonOptions): HTMLButtonElement {
   return getOrCreateCaptureButton(opts);
+}
+
+export function setFloatingCaptureButtonLoading(
+  loading: boolean,
+  loadingText?: string,
+) {
+  const btn = document.getElementById(CAPTURE_BTN_ID);
+  if (!(btn instanceof HTMLButtonElement)) return;
+  applyCaptureButtonLoadingState(btn, loading, loadingText);
 }
 
 export function startFloatingCaptureButtonObserver(opts: CaptureButtonOptions) {

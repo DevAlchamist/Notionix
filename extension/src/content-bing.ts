@@ -1,4 +1,7 @@
-import { startFloatingCaptureButtonObserver } from "./captureButton.js";
+import {
+  setFloatingCaptureButtonLoading,
+  startFloatingCaptureButtonObserver,
+} from "./captureButton.js";
 
 export const SUMMARY_PROMPT = `Summarize the conversation above.
 
@@ -264,6 +267,7 @@ function startCaptureButtonObserver() {
   startFloatingCaptureButtonObserver({
     buttonText: "Capture",
     onClick: () => {
+      setFloatingCaptureButtonLoading(true, "Working…");
       insertPromptAndSend(true).catch(() => {
         chrome.runtime.sendMessage({
           type: "SUMMARIZE_STATUS",
@@ -271,12 +275,19 @@ function startCaptureButtonObserver() {
           reason: "Could not start capture on this page.",
         });
         showCaptureIndicator("Capture failed to start", "error");
+        setFloatingCaptureButtonLoading(false);
       });
     },
   });
 }
 
 chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
+  if (message.type === "SUMMARIZE_STATUS") {
+    const status = String(message?.status ?? "");
+    if (status === "error" || status === "ready_to_review" || status === "saved") {
+      setFloatingCaptureButtonLoading(false);
+    }
+  }
   if (message.type === "INJECT_SUMMARY_PROMPT") {
     sendResponse({ ok: true });
     insertPromptAndSend(Boolean(message?.autoSave));
@@ -289,6 +300,7 @@ chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
   if (message.type === "SHOW_CAPTURE_SAVED_INDICATOR") {
     sendResponse({ ok: true });
     showCaptureIndicator("Saved to Memory");
+    setFloatingCaptureButtonLoading(false);
     return;
   }
   if (message.type === "SHOW_CAPTURE_ERROR_INDICATOR") {
@@ -298,6 +310,7 @@ chrome.runtime.onMessage.addListener((message: any, _sender, sendResponse) => {
         ? message.reason.trim()
         : "Capture could not be saved.";
     showCaptureIndicator(reason, "error");
+    setFloatingCaptureButtonLoading(false);
     return;
   }
   sendResponse({ ok: false });

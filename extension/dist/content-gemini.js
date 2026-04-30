@@ -4,6 +4,45 @@
   var CAPTURE_BTN_ID = "ai-remember-capture-btn";
   var CAPTURE_BTN_SELECTOR = `#${CAPTURE_BTN_ID}, button[data-ai-remember-capture='true']`;
   var onClickMap = /* @__PURE__ */ new WeakMap();
+  var DEFAULT_LOADING_TEXT = "Saving\u2026";
+  var LOADER_STYLE_ID = "ai-remember-capture-loader-style";
+  function ensureLoaderStyles() {
+    if (document.getElementById(LOADER_STYLE_ID)) return;
+    const style = document.createElement("style");
+    style.id = LOADER_STYLE_ID;
+    style.textContent = `
+@keyframes aiRememberSpin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+`;
+    document.documentElement.appendChild(style);
+  }
+  function renderCaptureButtonContent(btn, text, loading) {
+    while (btn.firstChild) btn.removeChild(btn.firstChild);
+    const row = document.createElement("span");
+    row.style.display = "inline-flex";
+    row.style.alignItems = "center";
+    row.style.justifyContent = "center";
+    row.style.gap = "8px";
+    row.style.pointerEvents = "none";
+    if (loading) {
+      ensureLoaderStyles();
+      const spinner = document.createElement("span");
+      spinner.setAttribute("aria-hidden", "true");
+      spinner.style.width = "14px";
+      spinner.style.height = "14px";
+      spinner.style.border = "2px solid rgba(255,255,255,0.35)";
+      spinner.style.borderTopColor = "rgba(255,255,255,0.95)";
+      spinner.style.borderRadius = "9999px";
+      spinner.style.animation = "aiRememberSpin 0.8s linear infinite";
+      row.appendChild(spinner);
+    }
+    const label = document.createElement("span");
+    label.textContent = text;
+    row.appendChild(label);
+    btn.appendChild(row);
+  }
   function getCaptureButtonPosStorageKey() {
     return `aiRemember:captureBtnPos:v1:${window.location.host}`;
   }
@@ -81,6 +120,14 @@
     captureBtn.style.setProperty("justify-content", "center", "important");
     captureBtn.style.setProperty("cursor", "grab", "important");
     captureBtn.style.setProperty("pointer-events", "auto", "important");
+    captureBtn.style.setProperty("user-select", "none", "important");
+    if (captureBtn.dataset.aiRememberCaptureLoading === "true") {
+      applyCaptureButtonLoadingState(
+        captureBtn,
+        true,
+        captureBtn.dataset.aiRememberCaptureLoadingText ?? void 0
+      );
+    }
     const posMode = captureBtn.dataset.aiRememberCapturePosMode;
     const saved = loadCaptureButtonPosition();
     if (posMode === "custom" || saved) {
@@ -160,6 +207,10 @@
     if (btn.dataset.aiRememberCaptureClickBound === "true") return;
     btn.dataset.aiRememberCaptureClickBound = "true";
     btn.addEventListener("click", (e) => {
+      if (btn.disabled || btn.dataset.aiRememberCaptureLoading === "true") {
+        e.preventDefault();
+        return;
+      }
       const handler = onClickMap.get(btn);
       if (!handler) return;
       try {
@@ -172,6 +223,35 @@
       e.preventDefault();
     });
   }
+  function applyCaptureButtonLoadingState(btn, loading, loadingText) {
+    if (loading) {
+      if (!btn.dataset.aiRememberCaptureDefaultText) {
+        btn.dataset.aiRememberCaptureDefaultText = btn.textContent ?? "Capture";
+      }
+      btn.dataset.aiRememberCaptureLoading = "true";
+      btn.dataset.aiRememberCaptureLoadingText = loadingText ?? DEFAULT_LOADING_TEXT;
+      btn.disabled = true;
+      btn.setAttribute("aria-busy", "true");
+      btn.setAttribute("aria-disabled", "true");
+      btn.style.setProperty("cursor", "not-allowed", "important");
+      btn.style.setProperty("opacity", "0.78", "important");
+      renderCaptureButtonContent(
+        btn,
+        btn.dataset.aiRememberCaptureLoadingText ?? DEFAULT_LOADING_TEXT,
+        true
+      );
+      return;
+    }
+    btn.dataset.aiRememberCaptureLoading = "false";
+    delete btn.dataset.aiRememberCaptureLoadingText;
+    btn.disabled = false;
+    btn.removeAttribute("aria-busy");
+    btn.removeAttribute("aria-disabled");
+    btn.style.setProperty("cursor", "grab", "important");
+    btn.style.setProperty("opacity", "1", "important");
+    const fallback = btn.dataset.aiRememberCaptureDefaultText ?? "Capture";
+    renderCaptureButtonContent(btn, fallback, false);
+  }
   function getOrCreateCaptureButton(opts) {
     const nodes = Array.from(document.querySelectorAll(CAPTURE_BTN_SELECTOR));
     const existing = nodes.find((n) => n instanceof HTMLButtonElement);
@@ -183,7 +263,9 @@
     btn.id = CAPTURE_BTN_ID;
     btn.type = "button";
     btn.dataset.aiRememberCapture = "true";
-    btn.textContent = opts.buttonText ?? "Capture Chat 2";
+    const label = opts.buttonText ?? "Capture";
+    btn.dataset.aiRememberCaptureDefaultText = label;
+    renderCaptureButtonContent(btn, label, false);
     styleFloatingCaptureButton(btn);
     enableCaptureButtonDrag(btn);
     attachCaptureButtonClickHandler(btn);
@@ -195,6 +277,11 @@
   }
   function mountFloatingCaptureButton(opts) {
     return getOrCreateCaptureButton(opts);
+  }
+  function setFloatingCaptureButtonLoading(loading, loadingText) {
+    const btn = document.getElementById(CAPTURE_BTN_ID);
+    if (!(btn instanceof HTMLButtonElement)) return;
+    applyCaptureButtonLoadingState(btn, loading, loadingText);
   }
   function startFloatingCaptureButtonObserver(opts) {
     mountFloatingCaptureButton(opts);
@@ -486,13 +573,21 @@ ${trimmed}` : trimmed;
     startFloatingCaptureButtonObserver({
       buttonText: "Capture",
       onClick: () => {
+        setFloatingCaptureButtonLoading(true, "Working\u2026");
         insertPromptAndSend(true).catch(() => {
           showCaptureIndicator("Capture failed to start", "error");
+          setFloatingCaptureButtonLoading(false);
         });
       }
     });
   }
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message.type === "SUMMARIZE_STATUS") {
+      const status = String(message?.status ?? "");
+      if (status === "error" || status === "ready_to_review" || status === "saved") {
+        setFloatingCaptureButtonLoading(false);
+      }
+    }
     if (message.type === "INJECT_SUMMARY_PROMPT") {
       sendResponse({ ok: true });
       insertPromptAndSend(Boolean(message?.autoSave));
@@ -509,12 +604,14 @@ ${trimmed}` : trimmed;
     if (message.type === "SHOW_CAPTURE_SAVED_INDICATOR") {
       sendResponse({ ok: true });
       showCaptureIndicator("Saved to Memory");
+      setFloatingCaptureButtonLoading(false);
       return;
     }
     if (message.type === "SHOW_CAPTURE_ERROR_INDICATOR") {
       sendResponse({ ok: true });
       const reason = typeof message?.reason === "string" && message.reason.trim().length ? message.reason.trim() : "Capture could not be saved.";
       showCaptureIndicator(reason, "error");
+      setFloatingCaptureButtonLoading(false);
       return;
     }
     sendResponse({ ok: false });
