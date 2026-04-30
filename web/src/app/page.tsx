@@ -11,6 +11,9 @@ export default function Home() {
             Notionix
           </span>
           <nav className="hidden items-center gap-6 md:flex">
+            <a href="/pricing" className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
+              Pricing
+            </a>
             <a href="/docs" className="text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors">
               Docs
             </a>
@@ -373,7 +376,7 @@ export default function Home() {
                   <ul className="space-y-4 text-[13px] text-[#5e6b7c] font-medium">
                      <li><a href="#" className="hover:text-slate-900 transition-colors">Features</a></li>
                      <li><a href="#" className="hover:text-slate-900 transition-colors">Integrations</a></li>
-                     <li><a href="#" className="hover:text-slate-900 transition-colors">Pricing</a></li>
+                     <li><a href="/pricing" className="hover:text-slate-900 transition-colors">Pricing</a></li>
                   </ul>
                </div>
                

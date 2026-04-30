@@ -1,5 +1,6 @@
 import { ArmorIQClient } from "@armoriq/sdk";
 import type { ArmorIqEmitResult, ArmorIqMode, AuditEventV1 } from "./types";
+import { ArmorIqAuditLog } from "@/server/models/ArmorIqAuditLog";
 
 const clientCache = new Map<string, ArmorIQClient>();
 
@@ -76,6 +77,28 @@ function buildAuditPlan(env: ReturnType<typeof readEnv>, event: AuditEventV1) {
   };
 }
 
+async function persistArmorIqAuditAttempt(args: {
+  event: AuditEventV1;
+  userId: string;
+  userEmail?: string;
+  mode: ArmorIqMode;
+  emittedOk: boolean;
+  reason?: string;
+}) {
+  try {
+    await ArmorIqAuditLog.create({
+      userId: args.userId,
+      userEmail: args.userEmail,
+      mode: args.mode,
+      emittedOk: args.emittedOk,
+      reason: args.reason,
+      event: args.event,
+    });
+  } catch (err) {
+    console.warn("[armoriq] failed to persist local audit log.", err);
+  }
+}
+
 export async function armorIqEmitAuditEvent(
   event: AuditEventV1,
   user: { userId: string; userEmail?: string },
@@ -85,7 +108,17 @@ export async function armorIqEmitAuditEvent(
 
   try {
     const c = getClientForUser(user.userId, env);
-    if (!c) return { ok: true }; // observe-mode no-op if disabled/unconfigured
+    if (!c) {
+      await persistArmorIqAuditAttempt({
+        event,
+        userId: user.userId,
+        userEmail: user.userEmail,
+        mode,
+        emittedOk: true,
+        reason: "ArmorIQ disabled or not configured",
+      });
+      return { ok: true };
+    } // observe-mode no-op if disabled/unconfigured
 
     const plan = buildAuditPlan(env, event);
     const prompt = `Emit audit event ${event.eventType}`;
@@ -96,12 +129,35 @@ export async function armorIqEmitAuditEvent(
     const invokeParams = { event };
     await c.invoke(env.auditMcp, env.auditAction, token, invokeParams, undefined, user.userEmail);
 
+    await persistArmorIqAuditAttempt({
+      event,
+      userId: user.userId,
+      userEmail: user.userEmail,
+      mode,
+      emittedOk: true,
+    });
     return { ok: true };
   } catch (err) {
     if (mode === "enforce") {
+      await persistArmorIqAuditAttempt({
+        event,
+        userId: user.userId,
+        userEmail: user.userEmail,
+        mode,
+        emittedOk: false,
+        reason: "ArmorIQ audit emission failed in enforce mode.",
+      });
       return { ok: false, reason: "ArmorIQ audit emission failed in enforce mode.", error: err, mode };
     }
     console.warn("[armoriq] audit emission failed (observe mode).", err);
+    await persistArmorIqAuditAttempt({
+      event,
+      userId: user.userId,
+      userEmail: user.userEmail,
+      mode,
+      emittedOk: false,
+      reason: "ArmorIQ audit emission failed (observe mode).",
+    });
     return { ok: false, reason: "ArmorIQ audit emission failed (observe mode).", error: err, mode };
   }
 }
