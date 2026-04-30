@@ -15,6 +15,14 @@ Important:
 - Keep it clear, concrete, and skimmable.
 - Do not add extra sections beyond Title and Summary.`;
 
+const ASSISTANT_SELECTORS = [
+  "[data-role='model-response']",
+  "[data-testid='model-response']",
+  "[data-message-author-role='assistant']",
+  "[data-role='assistant']",
+  "article[data-testid*='assistant']",
+];
+
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -151,11 +159,7 @@ export async function insertPromptAndSend(autoSave = false) {
     return;
   }
 
-  const assistantSelector =
-    "[data-role='model-response'], [data-testid='model-response']";
-  const beforeAssistantCount = document.querySelectorAll<HTMLElement>(
-    assistantSelector,
-  ).length;
+  const beforeAssistantCount = getAssistantMessageBlocks().length;
   const beforeAssistantLastText = extractLatestAssistantMessage();
 
   if (input instanceof HTMLTextAreaElement) {
@@ -247,10 +251,9 @@ async function insertContinuePromptIntoInput(prompt: string): Promise<void> {
 }
 
 export function extractLatestAssistantMessage(): string | null {
-  const messageBlocks = document.querySelectorAll<HTMLElement>("[data-role='model-response'], [data-testid='model-response']");
+  const messageBlocks = getAssistantMessageBlocks();
   const last = messageBlocks[messageBlocks.length - 1];
-  if (!last) return null;
-  return last.innerText.trim();
+  return normalizeText(last?.innerText);
 }
 
 export function watchForSummaryResponse(
@@ -260,48 +263,69 @@ export function watchForSummaryResponse(
   timeoutMs = 60000,
 ) {
   const container = document.body;
-  const observer = new MutationObserver(() => {
-    const messageBlocks = document.querySelectorAll<HTMLElement>(
-      "[data-role='model-response'], [data-testid='model-response']",
-    );
-    const currentCount = messageBlocks.length;
-    const last = messageBlocks[messageBlocks.length - 1];
-    if (!last) return;
-    const text = last.innerText.trim();
-    if (!text) return;
+  const quietPeriodMs = 3000;
+  let quietTimerId: number | undefined;
+  let lastSeenText: string | null = null;
+  let newMessageStarted = false;
 
-    if (currentCount < beforeAssistantCount) return;
-
-    if (currentCount === beforeAssistantCount) {
-      if (beforeAssistantLastText && text === beforeAssistantLastText) return;
-    }
-    if (
-      currentCount > beforeAssistantCount &&
-      beforeAssistantLastText &&
-      text === beforeAssistantLastText
-    ) {
-      return;
-    }
+  const accept = () => {
+    const latestText = extractLatestAssistantMessage() ?? "";
+    if (!latestText) return;
+    if (lastSeenText && latestText !== lastSeenText) return;
 
     observer.disconnect();
     if (timeoutId) window.clearTimeout(timeoutId);
+    if (quietTimerId) window.clearTimeout(quietTimerId);
 
     chrome.runtime.sendMessage({
       type: "SUMMARY_COMPLETE",
       platform: "Gemini",
-      summaryText: text,
+      summaryText: latestText,
       url: window.location.href,
       createdAt: new Date().toISOString(),
       autoSave,
     });
+  };
+
+  const observer = new MutationObserver(() => {
+    const messageBlocks = getAssistantMessageBlocks();
+    const currentCount = messageBlocks.length;
+    const last = messageBlocks[messageBlocks.length - 1];
+    if (!last) return;
+    const text = normalizeText(last.innerText);
+    if (!text) return;
+
+    if (currentCount < beforeAssistantCount) return;
+
+    if (!newMessageStarted) {
+      if (currentCount === beforeAssistantCount) {
+        if (beforeAssistantLastText && text === beforeAssistantLastText) return;
+      } else if (
+        currentCount > beforeAssistantCount &&
+        beforeAssistantLastText &&
+        text === beforeAssistantLastText
+      ) {
+        return;
+      }
+      newMessageStarted = true;
+      lastSeenText = text;
+    } else if (text !== lastSeenText) {
+      lastSeenText = text;
+    } else {
+      return;
+    }
+
+    if (quietTimerId) window.clearTimeout(quietTimerId);
+    quietTimerId = window.setTimeout(() => accept(), quietPeriodMs);
   });
 
   let timeoutId: number | undefined = window.setTimeout(() => {
     observer.disconnect();
+    if (quietTimerId) window.clearTimeout(quietTimerId);
     chrome.runtime.sendMessage({
       type: "SUMMARIZE_STATUS",
       status: "error",
-      reason: "Timed out waiting for Gemini to finish generating the summary.",
+      reason: "Timed out waiting for Gemini to finish generating the summary (waiting for stable output).",
     });
   }, timeoutMs);
 
@@ -309,6 +333,21 @@ export function watchForSummaryResponse(
     childList: true,
     subtree: true,
   });
+}
+
+function normalizeText(value: string | null | undefined): string | null {
+  const text = String(value ?? "").trim();
+  return text.length ? text : null;
+}
+
+function getAssistantMessageBlocks(): HTMLElement[] {
+  for (const selector of ASSISTANT_SELECTORS) {
+    const blocks = Array.from(document.querySelectorAll<HTMLElement>(selector)).filter((node) =>
+      normalizeText(node.innerText),
+    );
+    if (blocks.length) return blocks;
+  }
+  return [];
 }
 
 function showCaptureIndicator(message: string, tone: "success" | "error" = "success") {

@@ -75,7 +75,7 @@
         "https://x.com/i/grok*"
       ],
       "js": [
-        "dist/content-chatgpt.js"
+        "dist/content-grok.js"
       ],
       "run_at": "document_idle"
     }

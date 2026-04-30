@@ -316,6 +316,12 @@ Summary:
 Important:
 - Keep it clear, concrete, and skimmable.
 - Do not add extra sections beyond Title and Summary.`;
+  var ASSISTANT_SELECTORS = [
+    "[data-testid='assistant-message']",
+    "[data-role='assistant']",
+    "[data-message-author-role='assistant']",
+    "article[data-testid*='assistant']"
+  ];
   function delay(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
@@ -417,10 +423,7 @@ Important:
       });
       return;
     }
-    const assistantSelector = "[data-testid='assistant-message'], [data-role='assistant']";
-    const beforeAssistantCount = document.querySelectorAll(
-      assistantSelector
-    ).length;
+    const beforeAssistantCount = getAssistantMessageBlocks().length;
     const beforeAssistantLastText = extractLatestAssistantMessage();
     if (input instanceof HTMLTextAreaElement) {
       input.focus();
@@ -499,52 +502,82 @@ ${trimmed}` : trimmed;
     input.dispatchEvent(new Event("change", { bubbles: true }));
   }
   function extractLatestAssistantMessage() {
-    const messageBlocks = document.querySelectorAll("[data-testid='assistant-message'], [data-role='assistant']");
+    const messageBlocks = getAssistantMessageBlocks();
     const last = messageBlocks[messageBlocks.length - 1];
-    if (!last) return null;
-    return last.innerText.trim();
+    return normalizeText(last?.innerText);
   }
   function watchForSummaryResponse(beforeAssistantCount, beforeAssistantLastText, autoSave, timeoutMs = 6e4) {
     const container = document.body;
-    const observer = new MutationObserver(() => {
-      const messageBlocks = document.querySelectorAll(
-        "[data-testid='assistant-message'], [data-role='assistant']"
-      );
-      const currentCount = messageBlocks.length;
-      const last = messageBlocks[messageBlocks.length - 1];
-      if (!last) return;
-      const text = last.innerText.trim();
-      if (!text) return;
-      if (currentCount < beforeAssistantCount) return;
-      if (currentCount === beforeAssistantCount) {
-        if (beforeAssistantLastText && text === beforeAssistantLastText) return;
-      }
-      if (currentCount > beforeAssistantCount && beforeAssistantLastText && text === beforeAssistantLastText) {
-        return;
-      }
+    const quietPeriodMs = 3e3;
+    let quietTimerId;
+    let lastSeenText = null;
+    let newMessageStarted = false;
+    const accept = () => {
+      const latestText = extractLatestAssistantMessage() ?? "";
+      if (!latestText) return;
+      if (lastSeenText && latestText !== lastSeenText) return;
       observer.disconnect();
       if (timeoutId) window.clearTimeout(timeoutId);
+      if (quietTimerId) window.clearTimeout(quietTimerId);
       chrome.runtime.sendMessage({
         type: "SUMMARY_COMPLETE",
         platform: "Claude",
-        summaryText: text,
+        summaryText: latestText,
         url: window.location.href,
         createdAt: (/* @__PURE__ */ new Date()).toISOString(),
         autoSave
       });
+    };
+    const observer = new MutationObserver(() => {
+      const messageBlocks = getAssistantMessageBlocks();
+      const currentCount = messageBlocks.length;
+      const last = messageBlocks[messageBlocks.length - 1];
+      if (!last) return;
+      const text = normalizeText(last.innerText);
+      if (!text) return;
+      if (currentCount < beforeAssistantCount) return;
+      if (!newMessageStarted) {
+        if (currentCount === beforeAssistantCount) {
+          if (beforeAssistantLastText && text === beforeAssistantLastText) return;
+        } else if (currentCount > beforeAssistantCount && beforeAssistantLastText && text === beforeAssistantLastText) {
+          return;
+        }
+        newMessageStarted = true;
+        lastSeenText = text;
+      } else if (text !== lastSeenText) {
+        lastSeenText = text;
+      } else {
+        return;
+      }
+      if (quietTimerId) window.clearTimeout(quietTimerId);
+      quietTimerId = window.setTimeout(() => accept(), quietPeriodMs);
     });
     let timeoutId = window.setTimeout(() => {
       observer.disconnect();
+      if (quietTimerId) window.clearTimeout(quietTimerId);
       chrome.runtime.sendMessage({
         type: "SUMMARIZE_STATUS",
         status: "error",
-        reason: "Timed out waiting for Claude to finish generating the summary."
+        reason: "Timed out waiting for Claude to finish generating the summary (waiting for stable output)."
       });
     }, timeoutMs);
     observer.observe(container, {
       childList: true,
       subtree: true
     });
+  }
+  function normalizeText(value) {
+    const text = String(value ?? "").trim();
+    return text.length ? text : null;
+  }
+  function getAssistantMessageBlocks() {
+    for (const selector of ASSISTANT_SELECTORS) {
+      const blocks = Array.from(document.querySelectorAll(selector)).filter(
+        (node) => normalizeText(node.innerText)
+      );
+      if (blocks.length) return blocks;
+    }
+    return [];
   }
   function showCaptureIndicator(message, tone = "success") {
     const id = "ai-remember-capture-indicator";

@@ -3,11 +3,17 @@
 import { clientApiUrl } from "@/lib/apiBase";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 
 export function Sidebar() {
   const pathname = usePathname();
   const [isHelpModalOpen, setIsHelpModalOpen] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   async function signOut() {
     try {
@@ -157,48 +163,51 @@ export function Sidebar() {
           Sign out
         </button>
       </nav>
-      {isHelpModalOpen && (
-        <div className="fixed inset-0 z-1000 flex items-center justify-center bg-slate-900/40 px-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
-            <div className="mb-4">
-              <h2 className="text-lg font-semibold text-slate-900">Need help?</h2>
-              <p className="mt-1 text-sm text-slate-600">
-                Choose how you want to contact us about the application.
-              </p>
+      {isMounted &&
+        isHelpModalOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-1000 flex items-center justify-center bg-slate-900/40 px-4">
+            <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-xl">
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold text-slate-900">Need help?</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  Choose how you want to contact us about the application.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Link
+                  href="/support?type=bug"
+                  onClick={() => setIsHelpModalOpen(false)}
+                  className="block rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Report a bug
+                </Link>
+                <Link
+                  href="/support?type=report"
+                  onClick={() => setIsHelpModalOpen(false)}
+                  className="block rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Report an issue
+                </Link>
+                <Link
+                  href="/support?type=suggestion"
+                  onClick={() => setIsHelpModalOpen(false)}
+                  className="block rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                >
+                  Share a suggestion
+                </Link>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsHelpModalOpen(false)}
+                className="mt-4 w-full rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200"
+              >
+                Close
+              </button>
             </div>
-            <div className="space-y-2">
-              <Link
-                href="/support?type=bug"
-                onClick={() => setIsHelpModalOpen(false)}
-                className="block rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-              >
-                Report a bug
-              </Link>
-              <Link
-                href="/support?type=report"
-                onClick={() => setIsHelpModalOpen(false)}
-                className="block rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-              >
-                Report an issue
-              </Link>
-              <Link
-                href="/support?type=suggestion"
-                onClick={() => setIsHelpModalOpen(false)}
-                className="block rounded-xl border border-slate-200 px-4 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
-              >
-                Share a suggestion
-              </Link>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsHelpModalOpen(false)}
-              className="mt-4 w-full rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-200"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </aside>
     <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-2 py-2 backdrop-blur md:hidden">
       <div className="mx-auto grid max-w-md grid-cols-6 gap-1">

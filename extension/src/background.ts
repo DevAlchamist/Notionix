@@ -94,7 +94,7 @@ function contentScriptFileForUrl(url: string): string | null {
     if (hostname === "claude.ai") return "dist/content-claude.js";
     if (hostname === "gemini.google.com") return "dist/content-gemini.js";
     if (hostname === "www.bing.com" || hostname === "copilot.microsoft.com") return "dist/content-bing.js";
-    if (hostname === "grok.com" || hostname === "x.com") return "dist/content-chatgpt.js";
+    if (hostname === "grok.com" || hostname === "x.com") return "dist/content-grok.js";
     return null;
   } catch {
     return null;

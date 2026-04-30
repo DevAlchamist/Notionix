@@ -15,6 +15,7 @@ await esbuild.build({
     "content-claude": "src/content-claude.ts",
     "content-gemini": "src/content-gemini.ts",
     "content-bing": "src/content-bing.ts",
+    "content-grok": "src/content-grok.ts",
   },
   outdir: "dist",
   format: "iife",

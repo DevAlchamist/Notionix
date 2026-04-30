@@ -304,23 +304,23 @@
     });
   }
 
-  // src/content-gemini.ts
+  // src/content-grok.ts
   var SUMMARY_PROMPT = `Summarize the conversation above.
 
 Output format (exact labels):
 Title: <a concise, specific title>
 Summary:
-<1\u20132 short paragraphs capturing context and the main outcome>
-- <5\u201310 bullet points with key details, decisions, constraints, and action items (if any)>
+<1-2 short paragraphs capturing context and the main outcome>
+- <5-10 bullet points with key details, decisions, constraints, and action items (if any)>
 
 Important:
 - Keep it clear, concrete, and skimmable.
 - Do not add extra sections beyond Title and Summary.`;
   var ASSISTANT_SELECTORS = [
-    "[data-role='model-response']",
-    "[data-testid='model-response']",
-    "[data-message-author-role='assistant']",
+    "[data-testid='assistant-message']",
     "[data-role='assistant']",
+    "[data-message-author-role='assistant']",
+    "[data-testid*='assistant']",
     "article[data-testid*='assistant']"
   ];
   function delay(ms) {
@@ -335,9 +335,32 @@ Important:
     }
     return getter();
   }
+  function isElementVisible(el) {
+    if (!el.isConnected) return false;
+    if (el.getAttribute("aria-hidden") === "true") return false;
+    const style = window.getComputedStyle(el);
+    if (style.display === "none" || style.visibility === "hidden") return false;
+    if (el.offsetParent === null && style.position !== "fixed") return false;
+    return true;
+  }
+  function normalizeText(value) {
+    const text = String(value ?? "").trim();
+    return text.length ? text : null;
+  }
+  function getAssistantMessageBlocks() {
+    for (const selector of ASSISTANT_SELECTORS) {
+      const blocks = Array.from(document.querySelectorAll(selector)).filter(
+        (node) => normalizeText(node.innerText)
+      );
+      if (blocks.length) return blocks;
+    }
+    return [];
+  }
   function getInputElement() {
     const selectors = [
+      "textarea[aria-label*='Ask']",
       "textarea[aria-label*='Message']",
+      "textarea[placeholder*='Ask']",
       "textarea[placeholder*='Message']",
       "textarea[placeholder*='message']",
       "textarea",
@@ -368,51 +391,29 @@ Important:
     const selectors = [
       "button[type='submit']",
       "button[aria-label*='Send']",
-      "button[aria-label='Send message']"
+      "button[aria-label*='send']",
+      "[role='button'][aria-label*='Send']",
+      "[role='button'][aria-label*='send']"
     ];
     for (const sel of selectors) {
       const nodes = document.querySelectorAll(sel);
       for (const node of Array.from(nodes)) {
-        if (isElementVisible(node)) return node;
+        if (node instanceof HTMLButtonElement && isElementVisible(node)) return node;
       }
-    }
-    return null;
-  }
-  function isElementVisible(el) {
-    if (!el.isConnected) return false;
-    if (el.getAttribute("aria-hidden") === "true") return false;
-    const style = window.getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden") return false;
-    if (el.offsetParent === null && style.position !== "fixed") return false;
-    return true;
-  }
-  function getSendButtonForInput(input) {
-    if (!input) return null;
-    let walk = input;
-    for (let depth = 0; depth < 12 && walk; depth++) {
-      const local = walk.querySelectorAll(
-        "button[type='submit'],button[aria-label*='Send'],button[aria-label='Send message']"
-      );
-      for (const btn of Array.from(local)) {
-        if (isElementVisible(btn) && walk.contains(btn)) return btn;
-      }
-      walk = walk.parentElement;
     }
     return null;
   }
   async function insertPromptAndSend(autoSave = false) {
-    const input = await waitFor(getInputElement, 1e4);
+    const input = await waitFor(getInputElement, 12e3);
     const sendBtn = await waitFor(() => {
-      const scoped = getSendButtonForInput(input);
-      if (scoped) return scoped;
-      const global = getSendButton();
-      return global && isElementVisible(global) ? global : null;
-    }, 1e4);
+      const btn = getSendButton();
+      return btn && isElementVisible(btn) ? btn : null;
+    }, 12e3);
     if (!input) {
       chrome.runtime.sendMessage({
         type: "SUMMARIZE_STATUS",
         status: "error",
-        reason: "Unable to find chat input in Gemini."
+        reason: "Unable to find chat input in Grok."
       });
       return;
     }
@@ -420,7 +421,7 @@ Important:
       chrome.runtime.sendMessage({
         type: "SUMMARIZE_STATUS",
         status: "error",
-        reason: "Unable to find send button in Gemini (composer not ready)."
+        reason: "Unable to find send button in Grok (composer not ready)."
       });
       return;
     }
@@ -435,15 +436,11 @@ Important:
       input.focus();
       input.textContent = SUMMARY_PROMPT;
       input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
     }
     await delay(150);
-    const enabledBtn = await waitFor(() => {
-      const scoped = getSendButtonForInput(input);
-      const btn = scoped ?? getSendButton();
-      return btn && !btn.disabled && isElementVisible(btn) ? btn : null;
-    }, 5e3);
     try {
-      (enabledBtn ?? sendBtn).click();
+      sendBtn.click();
     } catch {
     }
     chrome.runtime.sendMessage({
@@ -452,69 +449,18 @@ Important:
     });
     watchForSummaryResponse(beforeAssistantCount, beforeAssistantLastText, autoSave);
   }
-  function readContinuationPromptFromUrl() {
-    try {
-      const u = new URL(window.location.href);
-      const raw = u.searchParams.get("air_continue");
-      if (!raw) return null;
-      const prompt = raw.trim();
-      return prompt.length > 0 ? prompt : null;
-    } catch {
-      return null;
-    }
-  }
-  async function prefillContinuationPromptFromUrl() {
-    const prompt = readContinuationPromptFromUrl();
-    if (!prompt) return;
-    const input = await waitFor(getInputElement, 15e3);
-    if (!input) return;
-    if (input instanceof HTMLTextAreaElement) {
-      input.focus();
-      input.value = prompt;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      return;
-    }
-    input.focus();
-    input.innerText = prompt;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  }
-  async function insertContinuePromptIntoInput(prompt) {
-    const trimmed = String(prompt ?? "").trim();
-    if (!trimmed) return;
-    const input = await waitFor(getInputElement, 15e3);
-    if (!input) throw new Error("Unable to find chat input.");
-    if (input instanceof HTMLTextAreaElement) {
-      const existing2 = String(input.value ?? "");
-      const next2 = existing2.trim().length ? `${existing2}
-
-${trimmed}` : trimmed;
-      input.focus();
-      input.value = next2;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      return;
-    }
-    const existing = String(input.innerText ?? "");
-    const next = existing.trim().length ? `${existing}
-
-${trimmed}` : trimmed;
-    input.focus();
-    input.innerText = next;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.dispatchEvent(new Event("change", { bubbles: true }));
-  }
   function extractLatestAssistantMessage() {
     const messageBlocks = getAssistantMessageBlocks();
     const last = messageBlocks[messageBlocks.length - 1];
     return normalizeText(last?.innerText);
   }
-  function watchForSummaryResponse(beforeAssistantCount, beforeAssistantLastText, autoSave, timeoutMs = 6e4) {
+  function watchForSummaryResponse(beforeAssistantCount, beforeAssistantLastText, autoSave, timeoutMs = 7e4) {
     const container = document.body;
     const quietPeriodMs = 3e3;
+    let timeoutId;
     let quietTimerId;
-    let lastSeenText = null;
     let newMessageStarted = false;
+    let lastSeenText = null;
     const accept = () => {
       const latestText = extractLatestAssistantMessage() ?? "";
       if (!latestText) return;
@@ -524,7 +470,7 @@ ${trimmed}` : trimmed;
       if (quietTimerId) window.clearTimeout(quietTimerId);
       chrome.runtime.sendMessage({
         type: "SUMMARY_COMPLETE",
-        platform: "Gemini",
+        platform: "Grok",
         summaryText: latestText,
         url: window.location.href,
         createdAt: (/* @__PURE__ */ new Date()).toISOString(),
@@ -535,8 +481,7 @@ ${trimmed}` : trimmed;
       const messageBlocks = getAssistantMessageBlocks();
       const currentCount = messageBlocks.length;
       const last = messageBlocks[messageBlocks.length - 1];
-      if (!last) return;
-      const text = normalizeText(last.innerText);
+      const text = normalizeText(last?.innerText);
       if (!text) return;
       if (currentCount < beforeAssistantCount) return;
       if (!newMessageStarted) {
@@ -555,32 +500,19 @@ ${trimmed}` : trimmed;
       if (quietTimerId) window.clearTimeout(quietTimerId);
       quietTimerId = window.setTimeout(() => accept(), quietPeriodMs);
     });
-    let timeoutId = window.setTimeout(() => {
+    timeoutId = window.setTimeout(() => {
       observer.disconnect();
       if (quietTimerId) window.clearTimeout(quietTimerId);
       chrome.runtime.sendMessage({
         type: "SUMMARIZE_STATUS",
         status: "error",
-        reason: "Timed out waiting for Gemini to finish generating the summary (waiting for stable output)."
+        reason: "Timed out waiting for Grok to finish generating the summary (waiting for stable output)."
       });
     }, timeoutMs);
     observer.observe(container, {
       childList: true,
       subtree: true
     });
-  }
-  function normalizeText(value) {
-    const text = String(value ?? "").trim();
-    return text.length ? text : null;
-  }
-  function getAssistantMessageBlocks() {
-    for (const selector of ASSISTANT_SELECTORS) {
-      const blocks = Array.from(document.querySelectorAll(selector)).filter(
-        (node) => normalizeText(node.innerText)
-      );
-      if (blocks.length) return blocks;
-    }
-    return [];
   }
   function showCaptureIndicator(message, tone = "success") {
     const id = "ai-remember-capture-indicator";
@@ -607,7 +539,7 @@ ${trimmed}` : trimmed;
     startFloatingCaptureButtonObserver({
       buttonText: "Capture",
       onClick: () => {
-        setFloatingCaptureButtonLoading(true, "Working\u2026");
+        setFloatingCaptureButtonLoading(true, "Working...");
         insertPromptAndSend(true).catch(() => {
           showCaptureIndicator("Capture failed to start", "error");
           setFloatingCaptureButtonLoading(false);
@@ -626,10 +558,6 @@ ${trimmed}` : trimmed;
       sendResponse({ ok: true });
       insertPromptAndSend(Boolean(message?.autoSave));
       return;
-    }
-    if (message.type === "INJECT_CONTINUE_PROMPT") {
-      void insertContinuePromptIntoInput(String(message?.prompt ?? "")).then(() => sendResponse({ ok: true })).catch((err) => sendResponse({ ok: false, reason: String(err?.message ?? err) }));
-      return true;
     }
     if (message.type === "PING_CAPTURE_READY") {
       sendResponse({ ok: true });
@@ -651,6 +579,5 @@ ${trimmed}` : trimmed;
     sendResponse({ ok: false });
   });
   startCaptureButtonObserver();
-  void prefillContinuationPromptFromUrl();
 })();
-//# sourceMappingURL=content-gemini.js.map
+//# sourceMappingURL=content-grok.js.map
